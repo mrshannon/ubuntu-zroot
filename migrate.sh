@@ -138,7 +138,7 @@ min_blocks=$(resize2fs -P "/dev/${DISK}${ROOT_PART}" |& tail -n 1 | \
 total_blocks=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
     awk -F: '$1 ~ "Block count"{print $2}' | trim)
 echo "Filesystem is $((min_blocks*100/total_blocks))% full."
-if [[ $((total_blocks/min_blocks)) -lt 2 ]]; then
+if [[ $((min_blocks*100/total_blocks)) -gt 45 ]]; then
     echo -e "${_RED}${_BOLD}Not enough free space on root partition " \
         "(/dev/${DISK}${ROOT_PART}) for migration."
     echo "Delete some files, or expand the root partition, and try again."
@@ -153,16 +153,14 @@ echo -e "${_GREEN}${_BOLD}Shrinking and moving root partition..." \
 reisze2fs -M "/dev/${DISK}${ROOT_PART}"
 block_size=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
     awk -F: '/Block size/{print $2}')
-total_blocks=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
-    awk -F: '/Block count/{print $2}')
-size=$((block_size*total_blocks/1024/1024))  # in megabytes
+new_size=$((block_size*min_blocks/1024/1024))  # in megabytes
 sgdisk --delete "${ROOT_PART}" "/dev/${DISK}"
-sgdisk --new "${ROOT_PART}":0:+$((size + 64))M --typecode "${ROOT_PART}":8300 \
-    "/dev/${DISK}"
+sgdisk --new "${ROOT_PART}":0:+$((new_size + 128))M \
+    --typecode "${ROOT_PART}":8300 "/dev/${DISK}"
 new_part=$((1 + $(sgdisk --print "/dev/${DISK}" | tail +12 | \
     awk -v max=0 '{if($1>max)max=$1}END{print max}')))
-sgdisk --new "${new_part}":-$((size + 64))M:0 --typecode "${new_part}":8300 \
-    "/dev/${DISK}"
+sgdisk --new "${new_part}":-$((new_size + 128))M:0 \
+    --typecode "${new_part}":8300 "/dev/${DISK}"
 dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
     status=progress
 sgdisk --delete "${ROOT_PART}" "/dev/${DISK}"
