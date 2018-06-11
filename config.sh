@@ -1,9 +1,9 @@
 
 
 BOOT_TYPE=UEFI # UEFI or BIOS
-DISK=sdc
+DISK=sda
 EFI_PART=1  # ignored if BOOT_TYPE is BIOS
-ROOT_PART=1
+ROOT_PART=2
 RPOOL=rpool  # name of the root pool
 # Specify which paths should be thier own ZFS filesystems.
 # Comment out those you do not want.

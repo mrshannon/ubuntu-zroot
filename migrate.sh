@@ -2,9 +2,9 @@
 
 
 BOOT_TYPE=UEFI # UEFI or BIOS
-DISK=sdc
+DISK=sda
 EFI_PART=1  # ignored if BOOT_TYPE is BIOS
-ROOT_PART=1
+ROOT_PART=2
 RPOOL=rpool  # name of the root pool
 # Specify which paths should be thier own ZFS filesystems.
 # Comment out those you do not want.
@@ -86,7 +86,7 @@ function recommended_swap() {
 
 
 # Parse inputs.
-disk_id=$(get_disk_id "/dev/${DISK}${ROOT_PART}")
+disk_id=$(get_disk_id "/dev/${DISK}")
 
 
 # Ensure running as root.
@@ -150,14 +150,14 @@ fi
 # Shrink root partition and move to end.
 echo -e "${_GREEN}${_BOLD}Shrinking and moving root partition..." \
     "${BOLD_}${GREEN_}"
-reisze2fs -M "/dev/${DISK}${PART}"
-block_size=$(dumpe2fs -h "/dev/${DISK}${PART}" |& \
+reisze2fs -M "/dev/${DISK}${ROOT_PART}"
+block_size=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
     awk -F: '/Block size/{print $2}')
-total_blocks=$(dumpe2fs -h "/dev/${DISK}${PART}" |& \
+total_blocks=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
     awk -F: '/Block count/{print $2}')
 size=$((block_size*total_blocks/1024/1024))  # in megabytes
-sgdisk --delete "${PART}" "/dev/${DISK}"
-sgdisk --new "${PART}":0:+$((size + 64))M --typecode "${PART}":8300 \
+sgdisk --delete "${ROOT_PART}" "/dev/${DISK}"
+sgdisk --new "${ROOT_PART}":0:+$((size + 64))M --typecode "${ROOT_PART}":8300 \
     "/dev/${DISK}"
 new_part=$((1 + $(sgdisk --print "/dev/${DISK}" | tail +12 | \
     awk -v max=0 '{if($1>max)max=$1}END{print max}')))
