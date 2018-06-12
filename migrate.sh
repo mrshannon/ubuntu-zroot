@@ -18,10 +18,6 @@ if [[ -f config.sh ]]; then
     source config.sh
 fi
 
-exec 19>"${LOG}"
-BASH_XTRACEFD=19
-set -x
-
 
 ANSI_RESET="\\e[0m"
 _BOLD="\\e[1m"
@@ -193,7 +189,7 @@ min_blocks=$(resize2fs -P "/dev/${DISK}${ROOT_PART}" |& tail -n 1 | \
     awk -F: '{print $2}' | trim)
 total_blocks=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
     awk -F: '$1 ~ "Block count"{print $2}' | trim)
-echo "Filesystem is $((min_blocks*100/total_blocks))% full."
+msg "Filesystem is $((min_blocks*100/total_blocks))% full."
 if [[ $((min_blocks*100/total_blocks)) -gt 45 ]]; then
     error "Not enough free space on root partition "\
         "(/dev/${DISK}${ROOT_PART}) for migration."
@@ -225,10 +221,9 @@ if ! sgdisk --new "${new_part}":-$((new_size + 128))M:0 \
 fi
 partprobe "/dev/${DISK}" 1>&2
 wipefs -a "/dev/${DISK}${new_part}" 1>&2
-partprobe "/dev/${DISK}" 1>&2
-sleep 2
 if ! dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
-    status=progress 2>>"${LOG}"; then
+    status=progress;
+then
     die "Could not resize old root filesystem."
 fi
 if ! sgdisk --delete "${ROOT_PART}" "/dev/${DISK}" 1>&2; then
