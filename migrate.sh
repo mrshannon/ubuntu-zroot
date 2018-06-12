@@ -220,9 +220,10 @@ if ! sgdisk --new "${new_part}":-$((new_size + 128))M:0 \
     die "Could not resize old root filesystem."
 fi
 partprobe "/dev/${DISK}" 1>&2
+sleep 1
 wipefs -a "/dev/${DISK}${new_part}" 1>&2
 if ! dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
-    status=progress;
+    status=progress 2>1;
 then
     die "Could not resize old root filesystem."
 fi
@@ -230,6 +231,7 @@ if ! sgdisk --delete "${ROOT_PART}" "/dev/${DISK}" 1>&2; then
     die "Could not resize old root filesystem."
 fi
 partprobe "/dev/${DISK}" 1>&2
+sleep 1
 
 
 # Mount the source filesystem.
@@ -452,6 +454,7 @@ then
     die "Could not expand ZFS ROOT partition."
 fi
 partprobe "/dev/${DISK}" 1>&2
+sleep 1
 
 
 # Expand ZFS ROOT pool.

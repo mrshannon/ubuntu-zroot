@@ -15,7 +15,7 @@ FILESYSTEMS=(
     postgres        # /var/lib/postgres
     mongodb         # /var/lib/mongodb
     libvirt         # /var/lib/libvirt
-    nfs \           # /var/lib/nfs - no snapshots
+    nfs             # /var/lib/nfs - no snapshots
     mail            # /var/mail
     user-cache      # /home/USER/.cache - no snapshots
     user-downloads  # /home/USER/Downloads - no snapshots
