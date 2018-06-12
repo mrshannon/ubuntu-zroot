@@ -277,7 +277,7 @@ zfs create -o com.sun:auto-snapshot=false "${RPOOL}/var/cache" 1>&2
 msg "Creating /var/log..."
 zfs create -o acltype=posixacl -o xattr=sa "${RPOOL}/var/log" 1>&2
 msg "Creating /var/spool..."
-zfs create "${RPOOL}/var/spool" 1>&2
+zfs create -o com.sun:auto-snapshot=false "${RPOOL}/var/spool" 1>&2
 msg "Creating /var/tmp..."
 zfs create -o com.sun:auto-snapshot=false -o exec=on "${RPOOL}/var/tmp" 1>&2
 if [[ " ${FILESYSTEMS[*]} " =~ " local " ]]; then
@@ -489,7 +489,15 @@ fi
 
 # Snapshot initial state.
 msg2 "Creating initial snapshot of ${RPOOL}/ROOT/ubuntu..."
-zfs snapshot -r "${RPOOL}/ROOT/ubuntu@install"
+zfs snapshot -r "${RPOOL}/ROOT/ubuntu@initial"
+if [[ " ${FILESYSTEMS[*]} " =~ " local " ]]; then
+    msg "Creating initial snapshot of ${RPOOL}/local..."
+    zfs snapshot -r "${RPOOL}/local@initial"
+fi
+if [[ " ${FILESYSTEMS[*]} " =~ " opt " ]]; then
+    msg "Creating initial snapshot of ${RPOOL}/opt..."
+    zfs snapshot -r "${RPOOL}/opt@initial"
+fi
 
 
 # Unmount ROOT pool.
