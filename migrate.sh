@@ -129,14 +129,15 @@ if [[ "$yesno" != "yes" ]]; then
 fi
 
 
+# TODO: Add check for FS type
 if [[ "$BOOT_TYPE" == "UEFI" ]]; then
-    if ! [[ -f "/dev/${DISK}${EFI_PART}"  ]]; then
-        die "Root parition /dev/${DISK}${ROOT_PART} does not exist."
+    if ! [[ -e "/dev/${DISK}${EFI_PART}"  ]]; then
+        die "EFI parition /dev/${DISK}${EFI_PART} does not exist."
     fi
 fi
 
 
-if ! [[ -f "/dev/${DISK}${ROOT_PART}"  ]]; then
+if ! [[ -e "/dev/${DISK}${ROOT_PART}"  ]]; then
     die "Root parition /dev/${DISK}${ROOT_PART} does not exist."
 fi
 
@@ -224,6 +225,8 @@ if ! sgdisk --new "${new_part}":-$((new_size + 128))M:0 \
 fi
 partprobe "/dev/${DISK}" 1>&2
 wipefs -a "/dev/${DISK}${new_part}" 1>&2
+partprobe "/dev/${DISK}" 1>&2
+sleep 2
 if ! dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
     status=progress 2>>"${LOG}"; then
     die "Could not resize old root filesystem."
