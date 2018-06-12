@@ -403,7 +403,7 @@ echo "${RPOOL}/var/log  /var/log  zfs  defaults  0  0" \
     >>"${TARGET}/etc/fstab"
 echo "${RPOOL}/var/tmp  /var/tmp  zfs  defaults  0  0" \
     >>"${TARGET}/etc/fstab"
-echo RESUME=none > /etc/initramfs-tools/conf.d/resume
+echo RESUME=none > "${TARGET}/etc/initramfs-tools/conf.d/resume"
 
 
 # Install GRUB.
@@ -455,6 +455,11 @@ then
 fi
 partprobe "/dev/${DISK}" 1>&2
 sleep 1
+# Must update the grub configuration file so it does not have the old ubuntu
+# entry as an alternative boot option.
+if ! "${CHROOT}" "${TARGET}" update-grub 1>&2; then
+    die "Could not generate GRUB configuration file."
+fi
 
 
 # Expand ZFS ROOT pool.
