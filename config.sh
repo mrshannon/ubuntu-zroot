@@ -1,6 +1,4 @@
-
-
-BOOT_TYPE=UEFI # UEFI or BIOS
+BOOT_TYPE=UEFI # UEFI or BIOS (BIOS not currently supported)
 DISK=sda
 EFI_PART=1  # ignored if BOOT_TYPE is BIOS
 ROOT_PART=2
