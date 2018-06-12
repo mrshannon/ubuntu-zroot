@@ -127,7 +127,7 @@ fi
 # Install dependencies.
 echo -e "${_GREEN}${_BOLD}Installing dependencies...${BOLD_}${GREEN_}"
 add-apt-repository universe
-apt-cache update
+apt-get update
 apt-get --yes install gdisk parted dosfstools zfs-initramfs
 
 
@@ -250,9 +250,9 @@ if [[ " ${FILESYSTEMS[*]} " =~ " mail " ]]; then
     echo "Creating /var/mail..."
     zfs create ${RPOOL}/var/mail
 fi
-for user in "/${SOURCE}/home"/*; do
+for user in "${SOURCE}/home"/*; do
     if [[ -d "$user" ]]; then
-        user=$(echo "$user" | grep '[^\/]*$')
+        user=$(echo "$user" | grep -o '[^\/]*$')
         echo "Creating /home/$user..."
         zfs create "${RPOOL}/home/${user}"
         chmod --reference="${SOURCE}/home/${user}" "${TARGET}/home/${user}"
@@ -333,8 +333,9 @@ if [[ "${BOOT_TYPE}" == "UEFI" ]]; then
     mount "/dev/${DISK}${EFI_PART}" "${TARGET}/boot/efi"
 fi
 ./ubuntu-chroot.sh "${TARGET}" add-apt-repository universe 
-./ubuntu-chroot.sh "${TARGET}" apt-cache update 
-./ubuntu-chroot.sh "${TARGET}" apt-get --yes install zfs-initramfs grub-efi-amd64
+./ubuntu-chroot.sh "${TARGET}" apt-get update 
+./ubuntu-chroot.sh "${TARGET}" apt-get --yes install \
+    zfs-initramfs grub-efi-amd64 zfs-auto-snapshot
 if ! ./ubuntu-chroot.sh /${TARGET} grub-probe | grep 'zfs' >/dev/null; then
     echo -e "${_RED}${_BOLD}GRUB does not support ZFS booting," \
         "migration failed.${BOLD_}${RED_}"
@@ -388,6 +389,11 @@ if [[ ("${SWAP}" =~ ^[0-9]+M$) || ("${SWAP}" =~ ^[0-9]+G$) ]]; then
     echo "/dev/zvol/${RPOOL}/swap"  none  swap  defaults  0  0 >> \
         "$TARGET/etc/fstab"
 fi
+
+
+# Snapshot initial state.
+echo -e "${_GREEN}${_BOLD}Snapshoting...${BOLD_}${GREEN_}"
+zfs snapshot -r "${RPOOL}/ROOT/ubuntu@install"
 
 
 # Unmount ROOT pool.
