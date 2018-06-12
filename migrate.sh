@@ -129,6 +129,18 @@ if [[ "$yesno" != "yes" ]]; then
 fi
 
 
+if [[ "$BOOT_TYPE" == "UEFI" ]]; then
+    if ! [[ -f "/dev/${DISK}${EFI_PART}"  ]]; then
+        die "Root parition /dev/${DISK}${ROOT_PART} does not exist."
+    fi
+fi
+
+
+if ! [[ -f "/dev/${DISK}${ROOT_PART}"  ]]; then
+    die "Root parition /dev/${DISK}${ROOT_PART} does not exist."
+fi
+
+
 # Unmount target filesystem if running directly after new install.
 msg2 "Unmounting existing installation..."
 swapoff -a 1>&2
@@ -154,7 +166,7 @@ fi
 if ! apt-get update 1>&2; then
     die "Could not update repository database."
 fi
-if ! apt-get --yes install dosfstols 1>&2; then
+if ! apt-get --yes install dosfstools 1>&2; then
     die "Could not install dosfstools."
 fi
 if ! apt-get --yes install e2fsprogs 1>&2; then
@@ -173,7 +185,7 @@ fi
 
 # Check for enough free space.
 msg2 "Checking available disk space..."
-if ! e2fsck -f "/dev/${DISK}${ROOT_PART}" 1>&2; then
+if ! e2fsck -f "/dev/${DISK}${ROOT_PART}"; then
     die "Failed to "
 fi
 min_blocks=$(resize2fs -P "/dev/${DISK}${ROOT_PART}" |& tail -n 1 | \
@@ -210,6 +222,7 @@ if ! sgdisk --new "${new_part}":-$((new_size + 128))M:0 \
     --typecode "${new_part}":8300 "/dev/${DISK}" 1>&2; then
     die "Could not resize old root filesystem."
 fi
+partprobe "/dev/${DISK}" 1>&2
 wipefs -a "/dev/${DISK}${new_part}" 1>&2
 if ! dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
     status=progress 2>>"${LOG}"; then
