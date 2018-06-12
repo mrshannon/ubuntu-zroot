@@ -12,7 +12,7 @@ FILESYSTEMS=(local opt)
 SOURCE=/source
 TARGET=/target
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-CHROOT="$DIR/ubuntu-chroot/ubuntu-chroot"
+CHROOT="$DIR/arrowroot/arrowroot"
 
 if [[ -f config.sh ]]; then
     source config.sh
@@ -413,7 +413,7 @@ fi
 "${CHROOT}" "${TARGET}" apt-get update 1>&2
 "${CHROOT}" "${TARGET}" apt-get --yes install \
     zfs-initramfs grub-efi-amd64 zfs-auto-snapshot 1>&2
-if ! "${CHROOT}" "${TARGET}" grub-probe | grep 'zfs' >/dev/null; then
+if ! "${CHROOT}" "${TARGET}" grub-probe / | grep 'zfs' >/dev/null; then
     die "GRUB does not support ZFS booting, migration failed."
 fi
 if ! "${CHROOT}" "${TARGET}" update-initramfs -c -k all 1>&2; then
@@ -439,6 +439,7 @@ fi
 
 # Remove old root filesystem.
 msg2 "Removing old ROOT filesystem..."
+umount "${SOURCE}"
 if ! sgdisk --delete "${new_part}" "/dev/${DISK}" 1>&2; then
     die "Could not delete old root partition."
 fi
@@ -456,7 +457,7 @@ partprobe "/dev/${DISK}" 1>&2
 # Expand ZFS ROOT pool.
 echo -e "${_GREEN}${_BOLD}Epanding ZFS ROOT pool...${BOLD_}${GREEN_}"
 zpool set autoexpand=on "${RPOOL}" 1>&2
-if ! zpool online -e "${RPOOL}" "/dev/disk/bi-id/${disk_id}-part${ROOT_PART}" \
+if ! zpool online -e "${RPOOL}" "/dev/disk/by-id/${disk_id}-part${ROOT_PART}" \
     1>&2;
 then
     zpool set autoexpand=off "${RPOOL}" 1>&2
