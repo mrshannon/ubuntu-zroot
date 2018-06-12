@@ -59,7 +59,7 @@ function get_disk_id() {
         -exec echo -n {}" " \; -exec readlink -f {} \; | \
         awk -v sdx="$1" \
         '($2 ~ sdx"$") && ($1 !~ "wwn|eui|ieee"){print $1}' \
-        | grep  '[^\/]*$'
+        | grep -o '[^\/]*$'
 }
 
 
@@ -127,6 +127,7 @@ fi
 # Install dependencies.
 echo -e "${_GREEN}${_BOLD}Installing dependencies...${BOLD_}${GREEN_}"
 add-apt-repository universe
+apt-cache update
 apt-get --yes install gdisk parted dosfstools zfs-initramfs
 
 
@@ -150,7 +151,7 @@ fi
 # Shrink root partition and move to end.
 echo -e "${_GREEN}${_BOLD}Shrinking and moving root partition..." \
     "${BOLD_}${GREEN_}"
-reisze2fs -M "/dev/${DISK}${ROOT_PART}"
+resize2fs -M "/dev/${DISK}${ROOT_PART}"
 block_size=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
     awk -F: '/Block size/{print $2}')
 new_size=$((block_size*min_blocks/1024/1024))  # in megabytes
@@ -161,6 +162,7 @@ new_part=$((1 + $(sgdisk --print "/dev/${DISK}" | tail +12 | \
     awk -v max=0 '{if($1>max)max=$1}END{print max}')))
 sgdisk --new "${new_part}":-$((new_size + 128))M:0 \
     --typecode "${new_part}":8300 "/dev/${DISK}"
+wipefs -a "/dev/${DISK}${new_part}"
 dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
     status=progress
 sgdisk --delete "${ROOT_PART}" "/dev/${DISK}"
@@ -180,6 +182,7 @@ echo -e "${_GREEN}${_BOLD}Creating new ZFS ROOT pool ($RPOOL)..." \
     "${BOLD_}${GREEN_}"
 sgdisk --new "${ROOT_PART}":0:0 --typecode "${ROOT_PART}":BF01 \
     "/dev/${DISK}"
+wipefs -a "/dev/${DISK}${ROOT_PART}"
 mkdir /target
 partprobe "/dev/${DISK}"
 zpool create -f -o ashift=12 \
@@ -329,6 +332,8 @@ echo -e "${_GREEN}${_BOLD}Installing GRUB...${BOLD_}${GREEN_}"
 if [[ "${BOOT_TYPE}" == "UEFI" ]]; then
     mount "/dev/${DISK}${EFI_PART}" "${TARGET}/boot/efi"
 fi
+./ubuntu-chroot.sh "${TARGET}" add-apt-repository universe 
+./ubuntu-chroot.sh "${TARGET}" apt-cache update 
 ./ubuntu-chroot.sh "${TARGET}" apt-get --yes install zfs-initramfs grub-efi-amd64
 if ! ./ubuntu-chroot.sh /${TARGET} grub-probe | grep 'zfs' >/dev/null; then
     echo -e "${_RED}${_BOLD}GRUB does not support ZFS booting," \
