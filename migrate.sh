@@ -39,7 +39,7 @@ trap cleanup EXIT
 
 
 function msg() {
-    echo "--> ${_ITALICS}${1}${ITALICS_}"
+    echo -e "--> ${_ITALICS}${1}${ITALICS_}"
 }
 
 
