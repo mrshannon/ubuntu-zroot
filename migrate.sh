@@ -223,7 +223,7 @@ partprobe "/dev/${DISK}" 1>&2
 sleep 1
 wipefs -a "/dev/${DISK}${new_part}" 1>&2
 if ! dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
-    status=progress 2>1;
+    status=progress 2>&1;
 then
     die "Could not resize old root filesystem."
 fi
@@ -390,7 +390,8 @@ mount -t zfs "${RPOOL}/var/tmp" "${TARGET}/var/tmp" 1>&2
 
 # Clone root filesystem.
 msg2 "Cloning existing installation..."
-rsync -aX --info=progress2 "${SOURCE}/." "${TARGET}/." 
+rsync -aX --info=progress2 "${SOURCE}/." "${TARGET}/."
+rsync -acX --info=progress2 "${SOURCE}/." "${TARGET}/."
 rm -f "${TARGET}/swapfile" 1>&2
 
 
