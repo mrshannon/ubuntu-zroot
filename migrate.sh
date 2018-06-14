@@ -390,8 +390,12 @@ mount -t zfs "${RPOOL}/var/tmp" "${TARGET}/var/tmp" 1>&2
 
 # Clone root filesystem.
 msg2 "Cloning existing installation..."
-rsync -aX --info=progress2 "${SOURCE}/." "${TARGET}/."
-rsync -acX --info=progress2 "${SOURCE}/." "${TARGET}/."
+if ! rsync -aX --info=progress2 "${SOURCE}/." "${TARGET}/."; then
+  die "Could not clone root filesystem."
+fi
+if ! rsync -acX --info=progress2 "${SOURCE}/." "${TARGET}/."; then
+  die "Could not clone root filesystem."
+fi
 rm -f "${TARGET}/swapfile" 1>&2
 
 
