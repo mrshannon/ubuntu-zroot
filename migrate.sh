@@ -104,6 +104,13 @@ function recommended_swap() {
 disk_id=$(get_disk_id "/dev/${DISK}")
 
 
+if echo "${DRIVE}" | grep '[0-9]$'; then
+    p="p"
+else
+    p=""
+fi
+
+
 # Ensure running as root.
 if [[ "$EUID" -ne 0 ]]; then
     die "Must be root to migrate system to ZFS."
@@ -112,8 +119,8 @@ fi
 
 echo -en "${_BOLD}"
 echo "This script will attempt to migrate the existing Ubuntu installation"
-echo "at /dev/${DISK}${ROOT_PART} to a ZFS ROOT filesystem.  The migration"\
-    "script is"
+echo "at /dev/${DISK}${p}${ROOT_PART} to a ZFS ROOT filesystem. "\
+    " The migration script is"
 echo -e "${_RED}EXPERIMENTAL${RED_}, it may destroy your data.  Make sure "\
     "you have a backup"
 echo "before continuing."
@@ -127,29 +134,29 @@ fi
 
 # TODO: Add check for FS type
 if [[ "$BOOT_TYPE" == "UEFI" ]]; then
-    if ! [[ -e "/dev/${DISK}${EFI_PART}"  ]]; then
-        die "EFI parition /dev/${DISK}${EFI_PART} does not exist."
+    if ! [[ -e "/dev/${DISK}${p}${EFI_PART}"  ]]; then
+        die "EFI parition /dev/${DISK}${p}${EFI_PART} does not exist."
     fi
 fi
 
 
 if ! [[ -e "/dev/${DISK}${ROOT_PART}"  ]]; then
-    die "Root parition /dev/${DISK}${ROOT_PART} does not exist."
+    die "Root parition /dev/${DISK}${p}${ROOT_PART} does not exist."
 fi
 
 
 # Unmount target filesystem if running directly after new install.
 msg2 "Unmounting existing installation..."
 swapoff -a 1>&2
-if mount | grep "^/dev/${DISK}${ROOT_PART}" >/dev/null; then
-    if ! umount "/dev/${DISK}${ROOT_PART}" 1>&2; then
-        die "Could not unmount /dev/${DISK}${ROOT_PART}.".
+if mount | grep "^/dev/${DISK}${p}${ROOT_PART}" >/dev/null; then
+    if ! umount "/dev/${DISK}${p}${ROOT_PART}" 1>&2; then
+        die "Could not unmount /dev/${DISK}${p}${ROOT_PART}.".
     fi
 fi
 if [[ "$BOOT_TYPE" == "UEIF" ]]; then
-    if mount | grep "^/dev/${DISK}${EFI_PART}" >/dev/null; then
-        if ! umount "/dev/${DISK}${EFI_PART}" 1>&2; then
-            die "Could not unmount /dev/${DISK}${EFI_PART}."
+    if mount | grep "^/dev/${DISK}${p}${EFI_PART}" >/dev/null; then
+        if ! umount "/dev/${DISK}${p}${EFI_PART}" 1>&2; then
+            die "Could not unmount /dev/${DISK}${p}${EFI_PART}."
         fi
     fi
 fi
@@ -182,17 +189,17 @@ fi
 
 # Check for enough free space.
 msg2 "Checking available disk space..."
-if ! e2fsck -f "/dev/${DISK}${ROOT_PART}"; then
+if ! e2fsck -f "/dev/${DISK}${p}${ROOT_PART}"; then
     die "Filesystem corrupted."
 fi
-min_blocks=$(resize2fs -P "/dev/${DISK}${ROOT_PART}" |& tail -n 1 | \
+min_blocks=$(resize2fs -P "/dev/${DISK}${p}${ROOT_PART}" |& tail -n 1 | \
     awk -F: '{print $2}' | trim)
-total_blocks=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
+total_blocks=$(dumpe2fs -h "/dev/${DISK}${p}${ROOT_PART}" |& \
     awk -F: '$1 ~ "Block count"{print $2}' | trim)
 msg "Filesystem is $((min_blocks*100/total_blocks))% full."
 if [[ $((min_blocks*100/total_blocks)) -gt 45 ]]; then
     error "Not enough free space on root partition "\
-        "(/dev/${DISK}${ROOT_PART}) for migration."
+        "(/dev/${DISK}${p}${ROOT_PART}) for migration."
     die "Delete some files, or expand the root partition, and try again."
 fi
 
@@ -200,10 +207,10 @@ fi
 # Shrink root partition and move to end.
 echo -e "${_GREEN}${_BOLD}Shrinking and moving root partition..." \
     "${BOLD_}${GREEN_}"
-if ! resize2fs -M "/dev/${DISK}${ROOT_PART}" 1>&2; then
+if ! resize2fs -M "/dev/${DISK}${p}${ROOT_PART}" 1>&2; then
     die "Could not resize old root filesystem."
 fi
-block_size=$(dumpe2fs -h "/dev/${DISK}${ROOT_PART}" |& \
+block_size=$(dumpe2fs -h "/dev/${DISK}${p}${ROOT_PART}" |& \
     awk -F: '/Block size/{print $2}')
 new_size=$((block_size*min_blocks/1024/1024))  # in megabytes
 if ! sgdisk --delete "${ROOT_PART}" "/dev/${DISK}" 1>&2; then
@@ -221,9 +228,9 @@ if ! sgdisk --new "${new_part}":-$((new_size + 256))M:0 \
 fi
 partprobe "/dev/${DISK}" 1>&2
 sleep 1
-wipefs -a "/dev/${DISK}${new_part}" 1>&2
-if ! dd if="/dev/${DISK}${ROOT_PART}" of="/dev/${DISK}${new_part}" bs=64K \
-    status=progress 2>&1;
+wipefs -a "/dev/${DISK}${p}${new_part}" 1>&2
+if ! dd if="/dev/${DISK}${p}${ROOT_PART}" of="/dev/${DISK}${p}${new_part}" \
+    bs=64K status=progress 2>&1;
 then
     die "Could not resize old root filesystem."
 fi
@@ -232,7 +239,7 @@ if ! sgdisk --delete "${ROOT_PART}" "/dev/${DISK}" 1>&2; then
 fi
 partprobe "/dev/${DISK}" 1>&2
 sleep 1
-if ! e2fsck -f "/dev/${DISK}${new_part}"; then
+if ! e2fsck -f "/dev/${DISK}${p}${new_part}"; then
     die "Filesystem corrupted."
 fi
 
@@ -240,7 +247,7 @@ fi
 # Mount the source filesystem.
 msg2 "Mounting source filesystem at ${SOURCE}..."
 mkdir -p "${SOURCE}" 1>&2
-if ! mount "/dev/${DISK}$new_part" "${SOURCE}" 1>&2; then
+if ! mount "/dev/${DISK}${p}$new_part" "${SOURCE}" 1>&2; then
     die "Could not mount old root filesystem."
 fi
 
@@ -251,7 +258,7 @@ if ! sgdisk --new "${ROOT_PART}":0:0 --typecode "${ROOT_PART}":BF01 \
     "/dev/${DISK}" 1>&2; then
     die "Could not create partition for ROOT pool."
 fi
-wipefs -a "/dev/${DISK}${ROOT_PART}" 1>&2
+wipefs -a "/dev/${DISK}${p}${ROOT_PART}" 1>&2
 mkdir -p "${TARGET}"  1>&2
 sleep 1 # make sure partitions have time to be registered before running zpool
         # create
@@ -417,7 +424,7 @@ echo RESUME=none > "${TARGET}/etc/initramfs-tools/conf.d/resume"
 # Install GRUB.
 echo -e "${_GREEN}${_BOLD}Installing GRUB...${BOLD_}${GREEN_}"
 if [[ "${BOOT_TYPE}" == "UEFI" ]]; then
-    mount "/dev/${DISK}${EFI_PART}" "${TARGET}/boot/efi"
+    mount "/dev/${DISK}${p}${EFI_PART}" "${TARGET}/boot/efi"
 fi
 "${CHROOT}" "${TARGET}" add-apt-repository universe 1>&2
 "${CHROOT}" "${TARGET}" apt-get update 1>&2
