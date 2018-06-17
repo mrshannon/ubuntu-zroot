@@ -140,7 +140,7 @@ if [[ "$BOOT_TYPE" == "UEFI" ]]; then
 fi
 
 
-if ! [[ -e "/dev/${DISK}${ROOT_PART}"  ]]; then
+if ! [[ -e "/dev/${DISK}${p}${ROOT_PART}"  ]]; then
     die "Root parition /dev/${DISK}${p}${ROOT_PART} does not exist."
 fi
 
