@@ -485,7 +485,7 @@ if [[ "${SWAP}" == "auto" ]]; then
 fi
 if [[ ("${SWAP}" =~ ^[0-9]+M$) || ("${SWAP}" =~ ^[0-9]+G$) ]]; then
     msg2 "Creating ${SWAP} VDEV for swap..."
-    if ! zfs create -V 4G -b "$(getconf PAGESIZE)" -o compression=zle \
+    if ! zfs create -V "${SWAP}" -b "$(getconf PAGESIZE)" -o compression=zle \
         -o logbias=throughput -o sync=always \
         -o primarycache=metadata -o secondarycache=none \
         -o com.sun:auto-snapshot=false "${RPOOL}/swap" 1>&2;
