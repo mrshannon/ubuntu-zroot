@@ -183,7 +183,7 @@ fi
 # Check for enough free space.
 msg2 "Checking available disk space..."
 if ! e2fsck -f "/dev/${DISK}${ROOT_PART}"; then
-    die "Failed to "
+    die "Filesystem corrupted."
 fi
 min_blocks=$(resize2fs -P "/dev/${DISK}${ROOT_PART}" |& tail -n 1 | \
     awk -F: '{print $2}' | trim)
@@ -215,7 +215,7 @@ if ! sgdisk --new "${ROOT_PART}":0:+$((new_size + 128))M \
 fi
 new_part=$((1 + $(sgdisk --print "/dev/${DISK}" | tail +12 | \
     awk -v max=0 '{if($1>max)max=$1}END{print max}')))
-if ! sgdisk --new "${new_part}":-$((new_size + 128))M:0 \
+if ! sgdisk --new "${new_part}":-$((new_size + 256))M:0 \
     --typecode "${new_part}":8300 "/dev/${DISK}" 1>&2; then
     die "Could not resize old root filesystem."
 fi
@@ -232,6 +232,9 @@ if ! sgdisk --delete "${ROOT_PART}" "/dev/${DISK}" 1>&2; then
 fi
 partprobe "/dev/${DISK}" 1>&2
 sleep 1
+if ! e2fsck -f "/dev/${DISK}${new_part}"; then
+    die "Filesystem corrupted."
+fi
 
 
 # Mount the source filesystem.
@@ -497,6 +500,12 @@ if [[ ("${SWAP}" =~ ^[0-9]+M$) || ("${SWAP}" =~ ^[0-9]+G$) ]]; then
     fi
     echo "/dev/zvol/${RPOOL}/swap"  none  swap  defaults  0  0 >> \
         "$TARGET/etc/fstab"
+fi
+
+
+# Copy log file to new ROOT.
+if [[ -f "migration.log" ]]; then
+    cp "migration.log" "${TARGET}/root/"
 fi
 
 
