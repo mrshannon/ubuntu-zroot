@@ -104,7 +104,7 @@ function recommended_swap() {
 disk_id=$(get_disk_id "/dev/${DISK}")
 
 
-if echo "${DRIVE}" | grep '[0-9]$'; then
+if ! echo "${DRIVE}" | grep '[0-9]$'; then
     p="p"
 else
     p=""
