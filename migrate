@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import time
+import shutil
+import signal
+import argparse
+import subprocess
+from subprocess import CalledProcessError
+from collections import namedtuple
+import logging
+
+
+
+CMDOutput = namedtuple('Output', ['stdout', 'stderr'])
+
+
+class tc:
+    SUCCESS = '\033[30m'
+    HEADER = '\033[32m'
+    SUCCESS = '\033[30m'
+    WARNING = '\033[33m'
+    ERROR = '\033[31m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+
+
+def ctrl_c(signal, frame):
+    print('\nExiting...')
+    sys.exit(0)
+
+def fail(message, code=1):
+    logging.error('ERROR:' + message)
+    print(tc.ERROR + tc.BOLD + message + tc.ENDC, file=sys.stderr)
+    sys.exit(code)
+
+def warn(message):
+    logging.warning('WARNING:' + message)
+    print(tc.WARNING + tc.BOLD + message + tc.ENDC, file=sys.stderr)
+
+def info(message):
+    logging.info('INFO:' + message)
+    print(tc.BOLD + message + tc.ENDC)
+
+def heading(message):
+    logging.info('INFO:' + message)
+    print(tc.BOLD + tc.HEADER + message + tc.ENDC)
+
+# # https://thisdataguy.com/2017/07/03/no-options-with-argparse-and-python/
+# class BoolArgParse(argparse.ArgumentParser):
+#     def add_bool_arguments(self, *args, **kw):
+#         grp = self.add_mutually_exclusive_group()
+#         # add --flag
+#         grp.add_argument(*args, action='store_true', **kw)
+#         nohelp = 'no ' + kw['help']
+#         del kw['help']
+#         # add --no-flag
+#         grp.add_argument('--no-' + args[0][2:], *args[1:], action='store_false', help=nohelp, **kw)
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Migrate a Ubuntu installation to a ZFS root pool.')
+    parser.add_argument(
+        '--bios', action='store_true',
+        help=('migrate a BIOS system, instead of a UEFI system, '
+              '(NOT SUPPORTED)'))
+    parser.add_argument(
+        'disk', help='disk that Ubuntu was installed to')
+    parser.add_argument(
+        '--part', default=2,
+        help='partition number of the / partition, defaults to 2')
+    parser.add_argument(
+        '--efi-part', default=1,
+        help='partition number of the EFI partition, defaults to 1')
+    parser.add_argument(
+        '--swap', type=str, default='auto',
+        help=('swap size, in in megabytes (M suffix) or gigabytes '
+              '(G suffix), defaults to the recommended swap size based'
+              'on the amount of RAM'))
+    parser.add_argument(
+        '--no-swap', action='store_true', help='disable swap space')
+    parser.add_argument(
+        '--rpool', type=str, default='rpool', help=('name of the root pool'))
+    parser.add_argument(
+        '--local', action='store_true',
+        help=('store /usr/local on a separate ZFS filesystem'))
+    parser.add_argument(
+        '--opt', action='store_true',
+        help=('store /opt on a separate ZFS filesystem'))
+    parser.add_argument(
+        '--srv', action='store_true',
+        help=('store /srv on a separate ZFS filesystem'))
+    parser.add_argument(
+        '--games', action='store_true',
+        help=('store /var/games on a separate ZFS filesystem'))
+    parser.add_argument(
+        '--mysql', action='store_true',
+        help=('store /var/lib/mysql on a separate ZFS filesystem'))
+    parser.add_argument(
+        '--postgres', action='store_true',
+        help=('store /var/lib/postgres on a separate ZFS filesystem'))
+    # parser.add_argument(
+    #     '--mongodb', action='store_true',
+    #     help=('store /var/lib/postgre on a separate ZFS filesystem'))
+    # parser.add_argument(
+    #     '--redis', action='store_true',
+    #     help=('store /var/lib/redis on a separate ZFS filesystem'))
+    # parser.add_argument(
+    #     '--nfs', action='store_true',
+    #     help=('store /var/lib/nfs on a separate ZFS filesystem'))
+    # parser.add_argument(
+    #     '--libvirt', action='store_true',
+    #     help=('store /var/lib/libvirt on a separate ZFS filesystem'))
+    parser.add_argument(
+        '--mail', action='store_true',
+        help=('store /var/mail on a separate ZFS filesystem'))
+    # parser.add_argument(
+    #     '--http', action='store_true',
+    #     help=('store /srv/http on a separate ZFS filesystem'))
+    # parser.add_argument(
+    #     '--uwsgi', action='store_true',
+    #     help=('store /srv/uwsgi on a separate ZFS filesystem'))
+    return vars(parser.parse_args())
+
+
+def disk_path(disk, part=None):
+    if part:
+        if disk[-1].isdigit():
+            return '/dev/{}p{:d}'.format(disk, part)
+        return '/dev/{}{:d}'.format(disk, part)
+    else:
+        return '/dev/{}'.format(disk)
+
+def verify_disk(disk, part, efi_part=None):
+    heading('Verifying disk...')
+    try:
+        cmd('ls', disk_path(disk))
+    except CalledProcessError:
+        fail('Disk {} does not exist'.format(
+            disk_path(disk)))
+    try:
+        cmd('ls', disk_path(disk, part))
+    except CalledProcessError:
+        fail('Partition {} does not exist'.format(
+            disk_path(disk, part)))
+    if efi_part:
+        try:
+            cmd('ls', disk_path(disk, efi_part))
+        except CalledProcessError:
+            fail('EFI partition {} does not exist'.format(
+                disk_path(disk, efi_part)))
+
+def cleanup_install(disk):
+    heading('Cleaning up remnants of ubiquity installer...')
+    cmd('swapoff', '-a')
+    for line in cmd('mount').stdout.splitlines():
+        if line.startswith(disk_path(disk)):
+            try:
+                cmd('umount')
+            except CalledProcessError:
+                fail('Could not unmount {}.'.format(line.split()[0]))
+
+
+def install_dependencies():
+    heading('Installing dependencies...')
+    try:
+        cmd('add-apt-repository', 'universe')
+        cmd('apt-get', 'update')
+        cmd('apt-get', '--yes', 'dosfstools', 'e2fsprogs',
+            'gdisk', 'parted', 'zfs-initramfs')
+    except CalledProcessError:
+        fail('Could not install dependencies.')
+
+
+def ext_min_blocks(disk, part):
+    result = cmd('resize2fs', '-P', disk_path(disk, part))
+    blocks = int(
+        result.stdout.splitlines()[-1].split(':')[1].strip())
+    return blocks
+
+def ext_block_count(disk, part):
+    result = cmd('dumpe2fs', '-h', disk_path(disk, part))
+    blocks = int([l for l in result.stdout.splitlines()
+         if l.startswith('Block count')][0].split(':')[1].strip())
+    return blocks
+
+
+def ext_block_size(disk, part):
+    result = cmd('dumpe2fs', '-h', disk_path(disk, part))
+    block_size = int([l for l in result.stdout.splitlines()
+         if l.startswith('Block size')][0].split(':')[1].strip())
+    return block_size
+
+
+def check_free_space(disk, part):
+    heading('Checking free space...')
+    try:
+        cmd('e2fsck', '-f', disk_path(disk, part), capture=False)
+        min_blocks = ext_min_blocks(disk, part)
+        total_blocks = ext_block_count(disk, part)
+        percentage = min_blocks*100/total_blocks
+        info('Filesystem is {:d}% full.'.format(percentage))
+        if percentage > 45:
+            fail(('Not enough free space on root partition {} for '
+                  'migration.').format(disk_path(disk, part)))
+    except CalledProcessError:
+        fail('Filesystem corrupted.')
+
+
+def partitions(disk):
+    result = cmd('sgdisk', '--print', disk_path(disk))
+    parts = [int(l.split()[0]) for l in result.stdout.splitlines()[11:]]
+    return parts
+
+
+def move_root(disk, part):
+    heading('Moving old / partition to end of drive...')
+    try:
+        cmd('resize2fs', '-M', disk_path(disk, part))
+        block_size = ext_block_size(disk, part)
+        min_blocks = ext_min_blocks(disk, part)
+        new_size = int(min_blocks*block_size/1024/1024) # in megabytes
+        cmd('sgdisk', '--delete', '{:d}'.format(part), disk_path(disk))
+        cmd('sgdisk',
+            '--new', '{:d}:0:+{:d}M'.format(part, new_size + 256),
+            '--typecode {:d}:8300'.format(part), disk_path(disk))
+        new_part = max(partitions(disk)) + 1
+        cmd('sgdisk',
+            '--new', '{:d}:-{}M:0'.format(new_part, new_size),
+            '--typecode', '{:d}:8300', disk_path(disk))
+        cmd('partprobe', disk_path(disk))
+        time.sleep(2)
+        cmd('wipefs', '-a', disk_path(disk, part))
+        cmd('dd', 'bs=64K',
+            'if={:s}'.format(disk_path(disk, part)),
+            'of={:s}'.format(disk_path(disk, new_part)))
+        cmd('sgdisk', '--delete', part, disk_path(disk))
+        cmd('partprobe', disk_path(disk))
+        cmd('e2fsck', '-f', disk_path(disk, part), capture=False)
+    except CalledProcessError:
+        fail('Could not move old root partition to end of drive.')
+
+def mount_source_filesystem(disk):
+    heading('Mounting source filesystem at /source...')
+    try:
+        cmd('mkdir', '-p', '/source')
+        cmd('mount', disk_path(disk, max(partitions(disk))), '/source')
+    except CalledProcessError:
+        fail('Could not mount source filesystem.')
+
+def disk_id(disk):
+    for file in os.listdir('/dev/disk/by-id/'):
+        disk_id = os.path.join('/dev/disk/by-id', file)
+        if disk == os.path.basename(os.path.realpath(disk_id)):
+            return disk_id
+
+def create_root_pool(disk, part, pool):
+    heading(
+        'Creating root pool {:s} one disk {:s}...'.format(pool, disk))
+    try:
+        cmd('sgdisk',
+            '--new', '{:d}:0:0'.format(part),
+            '--typecode', '{:d}:BF01'.format(part), disk_path(disk))
+        cmd('wipefs', '-a', disk_path(disk, part))
+        cmd('mkdir', '-p', '/target')
+        cmd('partprobe', disk_path(disk))
+        cmd('zpool', 'create', '-f', '-o', 'ashift=12',
+            '-O', 'atime', '-O', 'canmount=off',
+            '-O', 'compression=lz4', '-O', 'normalization=formD',
+            '-O', 'xattr=sa', '-O', 'mountpoint=/', '-R', '/target',
+            pool, disk_id(disk) + '-part{:d}'.format(part))
+    except CalledProcessError:
+        fail('Could not mount source filesystem.')
+
+def zfs_create(pool, filesystem, snapshot=True, **kwargs):
+    option_array = []
+    if not snapshot:
+        option_array.append(['-o', 'com.sun:auto-snapshot=false'])
+    for key, value in kwargs:
+        if isinstance(value, bool):
+            if value:
+                option_array.append(['-o', '{:s}=on'.format(key)])
+            else:
+                option_array.append(['-o', '{:s}=off'.format(key)])
+        else:
+            option_array.append(['-o', '{:s}={:s}'.format(key, value)])
+    cmd('zfs', 'create', *option_array,
+        '{:s}/{:s}'.format(pool, filesystem))
+
+def create_filesystems(
+        pool, local=False, opt=False, srv=False, games=False,
+        mysql=False, postgres=False, mail=False):
+    heading('Creating filesystems...')
+    try:
+        info('Creating /')
+        zfs_create(
+            pool, 'ROOT', mountpoint='none', canmount=False)
+        zfs_create(
+            pool, 'ROOT/ubuntu', mountpoint='/', canmount='noauto')
+        cmd('zfs', 'mount', '{:s}/ROOT/ubuntu'.format(pool))
+        info('Creating /home')
+        zfs_create(pool, 'home', setuid=False)
+        info('Creating /root')
+        zfs_create(pool, 'home/root', mountpoint='/root')
+        zfs_create(pool, 'var', canmount=False, setuid=False, exec=False)
+        info('Creating /var/cache')
+        zfs_create(pool, 'var/cache', snapshot=False)
+        info('Creating /var/log')
+        zfs_create(pool, 'var/log', actltype='posixacl', xattr='sa')
+        info('Creating /var/spool')
+        zfs_create(pool, 'var/spool', snapshot=False)
+        info('Creating /var/tmp')
+        zfs_create(pool, 'var/tmp', snapshot=False, exec=False)
+        if local:
+            info('Creating /usr/local')
+            zfs_create(pool, 'local', mountpoint='/usr/local')
+        if opt:
+            info('Creating /opt')
+            zfs_create(pool, 'opt')
+        if srv:
+            info('Creating /srv')
+            zfs_create(pool, 'srv', exec=False)
+        if games:
+            info('Creating /var/games')
+            zfs_create(pool, 'var/games', exec=True)
+        if mysql:
+            info('Creating /var/lib/mysql')
+            zfs_create(pool, 'var/mysql', mountpoint='/var/lib/mysql')
+        if postgres:
+            info('Creating /var/lib/postgres')
+            zfs_create(pool, 'var/postgres', mountpoint='/var/lib/postgres')
+        if mail:
+            info('Creating /var/mail')
+            zfs_create(pool, 'var/mail')
+        for user in os.listdir('/source/home/'):
+            info('Creating /home/{:s}'.format(user))
+            zfs_create(pool, 'home/{:s}'.format(user))
+            cmd('chmod',
+                '--reference=/source/home/{:s}'.format(user),
+                '/target/home/{:s}'.format(user))
+        # /var/log and /var/tmp must be legacy mounted to avoid race
+        # conditions.
+        cmd('zfs', 'set', 'mountpoint=legacy', '{:s}/var/log'.format(pool))
+        cmd('zfs', 'set', 'mountpoint=legacy', '{:s}/var/tmp'.format(pool))
+        cmd('mkdir', '-p', '/target/var/log')
+        cmd('mkdir', '-p', '/target/var/tmp')
+        cmd('mount', '-t', 'zfs',
+            '{:s}/var/log'.format(pool), '/target/var/log')
+        cmd('mount', '-t', 'zfs',
+            '{:s}/var/tmp'.format(pool), '/target/var/tmp')
+    except CalledProcessError:
+        fail('Failed to create filesystems.')
+
+def clone_root_filesystem():
+    heading('Cloning existing installation...')
+    try:
+        cmd('rsync', '-aX', '/source/.', '/target/.')
+        cmd('rsync', '-acX', '/source/.', '/target/.')
+    except CalledProcessError:
+        fail('Failed to clone old installation.')
+
+
+def fix_fstab():
+    heading('Fixing fstab...')
+    shutil.copyfile('/target/etc/fstab', '/target/etc/fstab.bak')
+    with open('/target/etc/fstab', 'w') as outfile:
+        with open('/target/etc/fstab.bak') as infile:
+            for line in infile:
+                if line.split()[2] != '/' and line.split()[3] != 'swap':
+                    outfile.write(line)
+
+
+def main():
+    args = parse_args()
+    print(args)
+    verify_disk(args['disk'], args['part'], args['efi_part'])
+    cleanup_install(args['disk'])
+    install_dependencies()
+    check_free_space(args['disk'], args['part'])
+    move_root(args['disk'], args['part'])
+    mount_source_filesystem(args['disk'])
+    create_root_pool(args['disk'], args['part'], args['rpool'])
+    create_filesystems(
+        args['pool'], local=args['local'], opt=args['opt'], 
+        srv=args['srv'], games=args['games'], mysql=args['mysql'],
+        postgres=args['postgres'], mail=args['mail'])
+    clone_root_filesystem()
+    fix_fstab()
+
+def cmd(*args, capture=True):
+    logging.info('Command: [' + ', '.join(args) + ']')
+    if capture:
+        result = subprocess.run(args, check=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout = result.stdout.decode('utf-8').rstrip()
+        stderr = result.stderr.decode('utf-8').rstrip()
+        if stdout:
+            logging.info('STDOUT: ' + stdout)
+        if stderr:
+            logging.info('STDERR: ' + stderr)
+        return CMDOutput(stdout, stderr)
+    subprocess.run(args, check=True)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(format='%(message)s', filename='migrate.log', level=logging.DEBUG)
+    signal.signal(signal.SIGINT, ctrl_c)
+    main()
