@@ -68,14 +68,14 @@ def parse_args():
     parser.add_argument(
         'disk', help='disk that Ubuntu was installed to')
     parser.add_argument(
-        '--part', default=2,
+        '--part', default=2, type=int,
         help='partition number of the / partition, defaults to 2')
     parser.add_argument(
-        '--efi-part', default=1,
+        '--efi-part', default=1, type=int,
         help='partition number of the EFI partition, defaults to 1')
     parser.add_argument(
         '--swap', type=str, default='auto',
-        help=('swap size, in in megabytes (M suffix) or gigabytes '
+        help=('swap size, in megabytes (M suffix) or gigabytes '
               '(G suffix), defaults to the recommended swap size based'
               'on the amount of RAM'))
     parser.add_argument(
@@ -121,7 +121,7 @@ def parse_args():
     # parser.add_argument(
     #     '--uwsgi', action='store_true',
     #     help=('store /srv/uwsgi on a separate ZFS filesystem'))
-    return vars(parser.parse_args())
+    return parser.parse_args()
 
 
 def disk_path(disk, part=None):
@@ -369,24 +369,108 @@ def fix_fstab():
             for line in infile:
                 if line.split()[2] != '/' and line.split()[3] != 'swap':
                     outfile.write(line)
+    with open('/target/etc/initramfs-tools/conf.d/resume') as outfile:
+        outfile.write('RESUME=none\n')
 
+
+def chroot_cmd(*args, capture=True):
+    result = cmd(
+        os.path.join(os.path.realpath(__file__), 'arrowroot/arrowroot'),
+        '/target', *args, capture=capture)
+    return result
+
+def install_grub(disk, efi_part):
+    try:
+        cmd('mount', disk_path(disk, efi_part), '/target/boot/efi')
+        chroot_cmd('add-apt-repository', 'eniverse')
+        chroot_cmd('apt-get', 'update')
+        chroot_cmd('apt-get', '--yes', 'install', 'zfs-initramfs',
+                   'grub-efi-amd64', 'zfs-auto-snapshot')
+        if 'zfs' not in chroot_cmd('grub-probe').stdout:
+            fail('GRUB does not support ZFS booting, migration failed')
+        chroot_cmd('update-initramfs', '-c', '-k', 'all')
+        cmd('sed', '-i', '/GRUB_HIDDEN_TIMEOUT=/s/^/#/g',
+            '/target/etc/default/grub')
+        cmd('sed', '-ri',
+            '/GRUB_CMDLINE_LINUX_DEFAULT/s/quiet\\s*|splash\\s*//g',
+            '/target/etc/default/grub')
+        cmd('sed', '-i',
+            '/GRUB_TERMINAL=console/s/^#//g',
+            '/target/etc/default/grub')
+        chroot_cmd('update-grub')
+        chroot_cmd(
+            'grub-install', '--target=x86_64-efi',
+            '--efi-directory=/boot/efi', '--bootloader-id=ubuntu',
+            '--recheck', '--no-floppy')
+        if not os.path.isfile('/target/boot/grub/x86_64-efi/zfs.mod'):
+            fail('GRUB does not support ZFS booting')
+    except CalledProcessError:
+        fail('could not install GRUB')
+
+
+def expand_root(pool, disk, part):
+    try:
+        cmd('umount', '/source')
+        cmd('sgdisk', '--delete', str(max(partitions(disk))), disk_path(disk))
+        cmd('sgdisk', '--delete', str(part), disk_path(disk))
+        cmd('sgdisk', '--new', '{:d}:0:0'.format(part),
+            '--typecode', '{:d}:BF01'.format(part), disk_path(disk))
+        cmd('partprobe', disk_path(disk))
+        time.sleep(2)
+        # Must update the grub configuration file so it does not have
+        # the old ubuntu entry as an alternative boot option.
+        chroot_cmd('update-grub')
+        cmd('zpool', 'set', 'autoexpand=on', pool)
+        cmd('zpool', 'online', '-e', pool,
+            disk_id(disk) + '-part{:d}'.format(part))
+    except CalledProcessError:
+        fail('could not expand ZFS root')
+    finally:
+        cmd('zpool', 'set', 'autoexpand=off', pool)
+
+def recommended_swap():
+    try:
+        ram = cmd('free', '--mebi').stdout.splitlines()[1].split()[1]
+    except CalledProcessError:
+        fail('could not get ram quantity')
+    if ram <= 2048:
+        return ram*2
+    elif ram <= 8192:
+        return ram
+    elif ram <= 16384:
+        return 1024*8
+    return ram//2
+
+# def create_swap(pool, size):
+#     size_str = '{:d}M' if size 
+#     try:
+#         cmd('zfs', 'create', '-V', '')
+#     except CalledProcessError:
+#         fail('could not create swap')
 
 def main():
-    args = parse_args()
-    print(args)
-    verify_disk(args['disk'], args['part'], args['efi_part'])
-    cleanup_install(args['disk'])
+    options = parse_args()
+    print(options)
+    verify_disk(options.disk, options.part, options.efi_part)
+    cleanup_install(options.disk)
     install_dependencies()
-    check_free_space(args['disk'], args['part'])
-    move_root(args['disk'], args['part'])
-    mount_source_filesystem(args['disk'])
-    create_root_pool(args['disk'], args['part'], args['rpool'])
+    check_free_space(options.disk, options.part)
+    move_root(options.disk, options.part)
+    mount_source_filesystem(options.disk)
+    create_root_pool(options.disk, options.part, options.rpool)
     create_filesystems(
-        args['pool'], local=args['local'], opt=args['opt'], 
-        srv=args['srv'], games=args['games'], mysql=args['mysql'],
-        postgres=args['postgres'], mail=args['mail'])
+        options.rpool, local=options.local, opt=options.opt, 
+        srv=options.srv, games=options.games, mysql=options.mysql,
+        postgres=options.postgres, mail=options.mail)
     clone_root_filesystem()
     fix_fstab()
+    install_grub(options.disk, options.efi_part)
+    expand_root(options.rpool, options.disk, options.part)
+    if not options.swap_off:
+        if options.swap == 'auto':
+            create_swap(options.rpool, recommended_swap())
+        else:
+            create_swap(options.rpool, options.swap)
 
 def cmd(*args, capture=True):
     logging.info('Command: [' + ', '.join(args) + ']')
