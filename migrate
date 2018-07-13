@@ -162,7 +162,7 @@ def cleanup_install(disk):
     for line in cmd('mount').stdout.splitlines():
         if line.startswith(disk_path(disk)):
             try:
-                cmd('umount')
+                cmd('umount', line.split()[0])
             except CalledProcessError:
                 fail('Could not unmount {}.'.format(line.split()[0]))
 
@@ -240,12 +240,12 @@ def move_root(disk, part):
         cmd('dd', 'bs=64K', 'conv=noerror,sync',
             'if={:s}'.format(disk_path(disk, part)),
             'of={:s}'.format(disk_path(disk, new_part)))
-        cmd('sgdisk', '--delete', part, disk_path(disk))
         cmd('partprobe', disk_path(disk))
         # will fail first time due to checksums, should pass the second time
         cmd('e2fsck', '-f', disk_path(disk, new_part),
             capture=False, check=False)
         cmd('e2fsck', '-f', disk_path(disk, new_part), capture=False)
+        cmd('sgdisk', '--delete', part, disk_path(disk))
     except CalledProcessError:
         fail('Could not move old root partition to end of drive.')
 
