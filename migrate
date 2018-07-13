@@ -275,7 +275,7 @@ def create_root_pool(disk, part, pool):
         cmd('mkdir', '-p', '/target')
         cmd('partprobe', disk_path(disk))
         cmd('zpool', 'create', '-f', '-o', 'ashift=12',
-            '-O', 'atime', '-O', 'canmount=off',
+            '-O', 'atime=off', '-O', 'canmount=off',
             '-O', 'compression=lz4', '-O', 'normalization=formD',
             '-O', 'xattr=sa', '-O', 'mountpoint=/', '-R', '/target',
             pool, disk_id(disk) + '-part{:d}'.format(part))
