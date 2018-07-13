@@ -168,7 +168,7 @@ def install_dependencies():
     try:
         cmd('add-apt-repository', 'universe')
         cmd('apt-get', 'update')
-        cmd('apt-get', '--yes', 'dosfstools', 'e2fsprogs',
+        cmd('apt-get', 'install', '--yes', 'dosfstools', 'e2fsprogs',
             'gdisk', 'parted', 'zfs-initramfs')
     except CalledProcessError:
         fail('Could not install dependencies.')
