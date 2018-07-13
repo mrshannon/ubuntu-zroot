@@ -112,6 +112,7 @@ def parse_args():
     return parser.parse_args()
 
 def cmd(*args, capture=True):
+    args = ['"' + a + '"' for a in args]
     logging.info('Command: [' + ', '.join(args) + ']')
     if capture:
         result = subprocess.run(args, check=True,
@@ -225,10 +226,10 @@ def move_root(disk, part):
         cmd('sgdisk', '--delete', '{:d}'.format(part), disk_path(disk))
         cmd('sgdisk',
             '--new', '{:d}:0:+{:d}M'.format(part, new_size + 256),
-            '--typecode {:d}:8300'.format(part), disk_path(disk))
+            '--typecode', '{:d}:8300'.format(part), disk_path(disk))
         new_part = max(partitions(disk)) + 1
         cmd('sgdisk',
-            '--new', '{:d}:-{}M:0'.format(new_part, new_size),
+            '--new', '{:d}:-{:d}M:0'.format(new_part, new_size),
             '--typecode', '{:d}:8300', disk_path(disk))
         cmd('partprobe', disk_path(disk))
         time.sleep(2)
