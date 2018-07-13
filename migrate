@@ -371,7 +371,7 @@ def clone_root_filesystem():
     except CalledProcessError:
         fail('Failed to clone old installation.')
 
-def fix_fstab():
+def fix_fstab(pool):
     heading('Fixing fstab...')
     shutil.copyfile('/target/etc/fstab', '/target/etc/fstab.bak')
     with open('/target/etc/fstab', 'w') as outfile:
@@ -380,6 +380,10 @@ def fix_fstab():
                 if (not line.startswith('#') and line.split()[1] != '/' 
                         and line.split()[2] != 'swap'):
                     outfile.write(line)
+        outfile.write(
+            '\n{:s}/var/log  /var/log  zfs  defaults  0  0\n'.format(pool))
+        outfile.write(
+            '\n{:s}/var/tmp  /var/tmp  zfs  defaults  0  0\n'.format(pool))
     with open('/target/etc/initramfs-tools/conf.d/resume', 'w') as outfile:
         outfile.write('RESUME=none\n')
 
@@ -392,11 +396,11 @@ def install_grub(disk, efi_part):
     heading('Installing GRUB...')
     try:
         cmd('mount', disk_path(disk, efi_part), '/target/boot/efi')
-        chroot_cmd('add-apt-repository', 'eniverse')
+        chroot_cmd('add-apt-repository', 'universe')
         chroot_cmd('apt-get', 'update')
         chroot_cmd('apt-get', '--yes', 'install', 'zfs-initramfs',
                    'grub-efi-amd64', 'zfs-auto-snapshot')
-        if 'zfs' not in chroot_cmd('grub-probe').stdout:
+        if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
         chroot_cmd('update-initramfs', '-c', '-k', 'all')
         cmd('sed', '-i', '/GRUB_HIDDEN_TIMEOUT=/s/^/#/g',
@@ -440,7 +444,7 @@ def expand_root(pool, disk, part):
 
 def recommended_swap():
     try:
-        ram = cmd('free', '--mebi').stdout.splitlines()[1].split()[1]
+        ram = int(cmd('free', '--mebi').stdout.splitlines()[1].split()[1])
     except CalledProcessError:
         fail('could not get ram quantity')
     if ram <= 2048:
@@ -470,8 +474,8 @@ def create_swap(pool, size):
     except IOError:
         fail('could not add swap to fstab')
 
-def create_swap_wrapper(pool, size, swap_off):
-    if not swap_off:
+def create_swap_wrapper(pool, size, no_swap):
+    if not no_swap:
         if size == 'auto':
             create_swap(pool, recommended_swap())
         else:
@@ -508,7 +512,7 @@ def unmount_root(pool):
 
 def main():
     options = parse_args()
-    print(options)
+    # print(options)
     verify_disk(options.disk, options.part, options.efi_part)
     cleanup_install(options.disk)
     install_dependencies()
@@ -521,13 +525,13 @@ def main():
         srv=options.srv, games=options.games, mysql=options.mysql,
         postgres=options.postgres, mail=options.mail)
     clone_root_filesystem()
-    fix_fstab()
+    fix_fstab(options.rpool)
     install_grub(options.disk, options.efi_part)
     expand_root(options.rpool, options.disk, options.part)
-    create_swap_wrapper(options.rpool, options.swap, options.swap_off)
-    initial_snapshot(options.pool, options.local, options.opt)
+    create_swap_wrapper(options.rpool, options.swap, options.no_swap)
+    initial_snapshot(options.rpool, options.local, options.opt)
     copy_log() # copy log ot /root/migration.log on new system
-    unmount_root(options.pool)
+    unmount_root(options.rpool)
     info('Migration complete, you may now reboot into your new ZFS ROOT pool.')
 
 if __name__ == '__main__':
