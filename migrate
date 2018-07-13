@@ -113,16 +113,16 @@ def parse_args():
 
 def cmd(*args, capture=True):
     qouted_args = ['"' + a + '"' for a in args]
-    logging.info('Command: [' + ', '.join(qouted_args) + ']')
+    logging.info('\nCOMMAND: [' + ', '.join(qouted_args) + ']')
     if capture:
         result = subprocess.run(args, check=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout = result.stdout.decode('utf-8').rstrip()
         stderr = result.stderr.decode('utf-8').rstrip()
         if stdout:
-            logging.info('STDOUT: ' + stdout)
+            logging.info('\nSTDOUT: \n' + stdout)
         if stderr:
-            logging.info('STDERR: ' + stderr)
+            logging.info('\nSTDERR: \n' + stderr)
         return CMDOutput(stdout, stderr)
     subprocess.run(args, check=True)
 
@@ -225,11 +225,11 @@ def move_root(disk, part):
         new_size = int(min_blocks*block_size/1024/1024) # in megabytes
         cmd('sgdisk', '--delete', '{:d}'.format(part), disk_path(disk))
         cmd('sgdisk',
-            '--new', '{:d}:0:+{:d}M'.format(part, new_size + 256),
+            '--new', '{:d}:0:+{:d}M'.format(part, new_size + 128),
             '--typecode', '{:d}:8300'.format(part), disk_path(disk))
         new_part = max(partitions(disk)) + 1
         cmd('sgdisk',
-            '--new', '{:d}:-{:d}M:0'.format(new_part, new_size),
+            '--new', '{:d}:-{:d}M:0'.format(new_part, new_size + 256),
             '--typecode', '{:d}:8300'.format(new_part), disk_path(disk))
         cmd('partprobe', disk_path(disk))
         time.sleep(2)
