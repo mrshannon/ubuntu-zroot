@@ -270,6 +270,7 @@ def create_root_pool(disk, part, pool):
         cmd('sgdisk',
             '--new', '{:d}:0:0'.format(part),
             '--typecode', '{:d}:BF01'.format(part), disk_path(disk))
+        cmd('partprobe', disk_path(disk))
         cmd('wipefs', '-a', disk_path(disk, part))
         cmd('mkdir', '-p', '/target')
         cmd('partprobe', disk_path(disk))
