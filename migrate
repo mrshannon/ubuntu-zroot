@@ -287,7 +287,7 @@ def zfs_create(pool, filesystem, snapshot=True, **kwargs):
     option_array = []
     if not snapshot:
         option_array.append(['-o', 'com.sun:auto-snapshot=false'])
-    for key, value in kwargs:
+    for key, value in kwargs.items():
         if isinstance(value, bool):
             if value:
                 option_array.append(['-o', '{:s}=on'.format(key)])
