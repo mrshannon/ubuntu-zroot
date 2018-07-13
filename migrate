@@ -111,13 +111,13 @@ def parse_args():
     #     help=('store /srv/uwsgi on a separate ZFS filesystem'))
     return parser.parse_args()
 
-def cmd(*args, capture=True, check=True):
+def cmd(*args, capture=True, check=True, cwd=None):
     args = [str(arg) for arg in args]
     qouted_args = ['"' + arg + '"' for arg in args]
     logging.info('\nCOMMAND: [' + ', '.join(qouted_args) + ']')
     if capture:
         result = subprocess.run(args,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
         stdout = result.stdout.decode('utf-8').rstrip()
         stderr = result.stderr.decode('utf-8').rstrip()
         if stdout:
@@ -127,7 +127,7 @@ def cmd(*args, capture=True, check=True):
         if check:
             result.check_returncode()
         return CMDOutput(stdout, stderr)
-    subprocess.run(args, check=check)
+    subprocess.run(args, check=check, cwd=cwd)
 
 def disk_path(disk, part=None):
     if part:
@@ -377,15 +377,15 @@ def fix_fstab():
     with open('/target/etc/fstab', 'w') as outfile:
         with open('/target/etc/fstab.bak') as infile:
             for line in infile:
-                if line.split()[2] != '/' and line.split()[3] != 'swap':
+                if (not line.startswith('#') and line.split()[1] != '/' 
+                        and line.split()[2] != 'swap'):
                     outfile.write(line)
-    with open('/target/etc/initramfs-tools/conf.d/resume') as outfile:
+    with open('/target/etc/initramfs-tools/conf.d/resume', 'w') as outfile:
         outfile.write('RESUME=none\n')
 
 def chroot_cmd(*args, capture=True):
-    result = cmd(
-        os.path.join(os.path.realpath(__file__), 'arrowroot/arrowroot'),
-        '/target', *args, capture=capture)
+    cwd = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'arrowroot')
+    result = cmd('./arrowroot', '/target', *args, capture=capture, cwd=cwd)
     return result
 
 def install_grub(disk, efi_part):
@@ -416,7 +416,6 @@ def install_grub(disk, efi_part):
             fail('GRUB does not support ZFS booting')
     except CalledProcessError:
         fail('could not install GRUB')
-
 
 def expand_root(pool, disk, part):
     heading('Expanding ZFS root to fill entire disk...')
@@ -470,7 +469,6 @@ def create_swap(pool, size):
             outfile.write(line.format(pool))
     except IOError:
         fail('could not add swap to fstab')
-
 
 def create_swap_wrapper(pool, size, swap_off):
     if not swap_off:
