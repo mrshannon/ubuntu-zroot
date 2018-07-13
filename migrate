@@ -201,7 +201,7 @@ def check_free_space(disk, part):
         min_blocks = ext_min_blocks(disk, part)
         total_blocks = ext_block_count(disk, part)
         percentage = min_blocks*100/total_blocks
-        info('Filesystem is {:d}% full.'.format(percentage))
+        info('Filesystem is {:d}% full.'.format(int(percentage)))
         if percentage > 45:
             fail(('Not enough free space on root partition {} for '
                   'migration.').format(disk_path(disk, part)))
