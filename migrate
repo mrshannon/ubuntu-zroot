@@ -399,18 +399,19 @@ def install_grub(disk, efi_part):
         chroot_cmd('add-apt-repository', 'universe')
         chroot_cmd('apt-get', 'update')
         chroot_cmd('apt-get', 'install', '--yes', 'zfs-initramfs',
-                   'grub-efi-amd64', 'zfs-auto-snapshot')
+                   'grub-efi-amd64', 'zfs-auto-snapshot', capture=False)
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
         chroot_cmd('update-initramfs', '-c', '-k', 'all')
-        cmd('sed', '-i', '/GRUB_HIDDEN_TIMEOUT=/s/^/#/g',
-            '/target/etc/default/grub')
-        cmd('sed', '-ri',
-            '/GRUB_CMDLINE_LINUX_DEFAULT/s/quiet\\s*|splash\\s*//g',
-            '/target/etc/default/grub')
-        cmd('sed', '-i',
-            '/GRUB_TERMINAL=console/s/^#//g',
-            '/target/etc/default/grub')
+        # cmd('sed', '-i', '/GRUB_HIDDEN_TIMEOUT=/s/^/#/g',
+        #     '/target/etc/default/grub')
+        # cmd('sed', '-ri',
+        #     '/GRUB_CMDLINE_LINUX_DEFAULT/s/quiet\\s*|splash\\s*//g',
+        #     '/target/etc/default/grub')
+        # cmd('sed', '-i',
+        #     '/GRUB_TERMINAL=console/s/^#//g',
+        #     '/target/etc/default/grub')
+        cmd('fix_grub.sh')
         chroot_cmd('update-grub')
         chroot_cmd(
             'grub-install', '--target=x86_64-efi',
