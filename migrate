@@ -367,10 +367,9 @@ def clone_root_filesystem():
     try:
         cmd('rsync', '-aX', '/source/.', '/target/.')
         cmd('rsync', '-acX', '/source/.', '/target/.')
-        cmd('rf', '-f', '/target/swapfile')
+        cmd('rm', '-f', '/target/swapfile')
     except CalledProcessError:
         fail('Failed to clone old installation.')
-
 
 def fix_fstab():
     heading('Fixing fstab...')
