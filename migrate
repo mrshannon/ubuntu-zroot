@@ -224,8 +224,8 @@ def move_root(disk, part):
     try:
         cmd('resize2fs', '-M', disk_path(disk, part))
         block_size = ext_block_size(disk, part)
-        min_blocks = ext_min_blocks(disk, part)
-        new_size = int(min_blocks*block_size/1024/1024) # in megabytes
+        blocks = ext_block_count(disk, part)
+        new_size = int(blocks*block_size/1024/1024) # in megabytes
         cmd('sgdisk', '--delete', '{:d}'.format(part), disk_path(disk))
         cmd('sgdisk',
             '--new', '{:d}:0:+{:d}M'.format(part, new_size + 128),
