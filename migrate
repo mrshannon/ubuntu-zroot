@@ -317,7 +317,7 @@ def create_filesystems(
         info('Creating /var/cache')
         zfs_create(pool, 'var/cache', snapshot=False)
         info('Creating /var/log')
-        zfs_create(pool, 'var/log', actltype='posixacl', xattr='sa')
+        zfs_create(pool, 'var/log', acltype='posixacl', xattr='sa')
         info('Creating /var/spool')
         zfs_create(pool, 'var/spool', snapshot=False)
         info('Creating /var/tmp')
