@@ -398,7 +398,7 @@ def install_grub(disk, efi_part):
         cmd('mount', disk_path(disk, efi_part), '/target/boot/efi')
         chroot_cmd('add-apt-repository', 'universe')
         chroot_cmd('apt-get', 'update')
-        chroot_cmd('apt-get', '--yes', 'install', 'zfs-initramfs',
+        chroot_cmd('apt-get', 'install', '--yes', 'zfs-initramfs',
                    'grub-efi-amd64', 'zfs-auto-snapshot')
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
@@ -506,7 +506,6 @@ def unmount_root(pool):
     try:
         cmd('umount', '/target/boot/efi')
         cmd('zpool', 'export', pool)
-        cmd('umount', '/source')
     except CalledProcessError:
         fail('could not unmount filesystems')
 
