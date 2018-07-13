@@ -112,7 +112,8 @@ def parse_args():
     return parser.parse_args()
 
 def cmd(*args, capture=True):
-    qouted_args = ['"' + a + '"' for a in args]
+    args = [str(arg) for arg in args]
+    qouted_args = ['"' + arg + '"' for arg in args]
     logging.info('\nCOMMAND: [' + ', '.join(qouted_args) + ']')
     if capture:
         result = subprocess.run(args, check=True,
