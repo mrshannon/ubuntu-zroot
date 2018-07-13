@@ -116,7 +116,7 @@ def cmd(*args, capture=True):
     qouted_args = ['"' + arg + '"' for arg in args]
     logging.info('\nCOMMAND: [' + ', '.join(qouted_args) + ']')
     if capture:
-        result = subprocess.run(args, check=True,
+        result = subprocess.run(args,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout = result.stdout.decode('utf-8').rstrip()
         stderr = result.stderr.decode('utf-8').rstrip()
@@ -124,6 +124,7 @@ def cmd(*args, capture=True):
             logging.info('\nSTDOUT: \n' + stdout)
         if stderr:
             logging.info('\nSTDERR: \n' + stderr)
+        result.check_returncode()
         return CMDOutput(stdout, stderr)
     subprocess.run(args, check=True)
 
@@ -240,7 +241,7 @@ def move_root(disk, part):
             'of={:s}'.format(disk_path(disk, new_part)))
         cmd('sgdisk', '--delete', part, disk_path(disk))
         cmd('partprobe', disk_path(disk))
-        cmd('e2fsck', '-f', disk_path(disk, part), capture=False)
+        cmd('e2fsck', '-f', disk_path(disk, new_part), capture=False)
     except CalledProcessError:
         fail('Could not move old root partition to end of drive.')
 
