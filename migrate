@@ -111,7 +111,7 @@ def parse_args():
     #     help=('store /srv/uwsgi on a separate ZFS filesystem'))
     return parser.parse_args()
 
-def cmd(*args, capture=True):
+def cmd(*args, capture=True, check=True):
     args = [str(arg) for arg in args]
     qouted_args = ['"' + arg + '"' for arg in args]
     logging.info('\nCOMMAND: [' + ', '.join(qouted_args) + ']')
@@ -124,9 +124,10 @@ def cmd(*args, capture=True):
             logging.info('\nSTDOUT: \n' + stdout)
         if stderr:
             logging.info('\nSTDERR: \n' + stderr)
-        result.check_returncode()
+        if check:
+            result.check_returncode()
         return CMDOutput(stdout, stderr)
-    subprocess.run(args, check=True)
+    subprocess.run(args, check=check)
 
 def disk_path(disk, part=None):
     if part:
@@ -236,11 +237,14 @@ def move_root(disk, part):
         cmd('partprobe', disk_path(disk))
         time.sleep(2)
         cmd('wipefs', '-a', disk_path(disk, part))
-        cmd('dd', 'bs=64K',
+        cmd('dd', 'bs=64K', 'conv=noerror,sync',
             'if={:s}'.format(disk_path(disk, part)),
             'of={:s}'.format(disk_path(disk, new_part)))
         cmd('sgdisk', '--delete', part, disk_path(disk))
         cmd('partprobe', disk_path(disk))
+        # will fail first time due to checksums, should pass the second time
+        cmd('e2fsck', '-f', disk_path(disk, new_part),
+            capture=False, check=False)
         cmd('e2fsck', '-f', disk_path(disk, new_part), capture=False)
     except CalledProcessError:
         fail('Could not move old root partition to end of drive.')
