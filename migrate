@@ -411,7 +411,7 @@ def install_grub(disk, efi_part):
         # cmd('sed', '-i',
         #     '/GRUB_TERMINAL=console/s/^#//g',
         #     '/target/etc/default/grub')
-        cmd('fix_grub.sh')
+        # cmd('fix_grub.sh')
         chroot_cmd('update-grub')
         chroot_cmd(
             'grub-install', '--target=x86_64-efi',
