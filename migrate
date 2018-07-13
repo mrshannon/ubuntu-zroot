@@ -12,7 +12,6 @@ from collections import namedtuple
 import logging
 
 
-
 CMDOutput = namedtuple('Output', ['stdout', 'stderr'])
 
 
@@ -46,17 +45,6 @@ def info(message):
 def heading(message):
     logging.info('INFO:' + message)
     print(tc.BOLD + tc.HEADER + message + tc.ENDC)
-
-# # https://thisdataguy.com/2017/07/03/no-options-with-argparse-and-python/
-# class BoolArgParse(argparse.ArgumentParser):
-#     def add_bool_arguments(self, *args, **kw):
-#         grp = self.add_mutually_exclusive_group()
-#         # add --flag
-#         grp.add_argument(*args, action='store_true', **kw)
-#         nohelp = 'no ' + kw['help']
-#         del kw['help']
-#         # add --no-flag
-#         grp.add_argument('--no-' + args[0][2:], *args[1:], action='store_false', help=nohelp, **kw)
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -123,6 +111,19 @@ def parse_args():
     #     help=('store /srv/uwsgi on a separate ZFS filesystem'))
     return parser.parse_args()
 
+def cmd(*args, capture=True):
+    logging.info('Command: [' + ', '.join(args) + ']')
+    if capture:
+        result = subprocess.run(args, check=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout = result.stdout.decode('utf-8').rstrip()
+        stderr = result.stderr.decode('utf-8').rstrip()
+        if stdout:
+            logging.info('STDOUT: ' + stdout)
+        if stderr:
+            logging.info('STDERR: ' + stderr)
+        return CMDOutput(stdout, stderr)
+    subprocess.run(args, check=True)
 
 def disk_path(disk, part=None):
     if part:
@@ -257,7 +258,7 @@ def disk_id(disk):
 
 def create_root_pool(disk, part, pool):
     heading(
-        'Creating root pool {:s} one disk {:s}...'.format(pool, disk))
+        'Creating root pool {:s} on disk {:s}...'.format(pool, disk))
     try:
         cmd('sgdisk',
             '--new', '{:d}:0:0'.format(part),
@@ -274,6 +275,7 @@ def create_root_pool(disk, part, pool):
         fail('Could not mount source filesystem.')
 
 def zfs_create(pool, filesystem, snapshot=True, **kwargs):
+    info('New ZFS dataset {:s}/{:s}'.format(pool, filesystem))
     option_array = []
     if not snapshot:
         option_array.append(['-o', 'com.sun:auto-snapshot=false'])
@@ -357,6 +359,7 @@ def clone_root_filesystem():
     try:
         cmd('rsync', '-aX', '/source/.', '/target/.')
         cmd('rsync', '-acX', '/source/.', '/target/.')
+        cmd('rf', '-f', '/target/swapfile')
     except CalledProcessError:
         fail('Failed to clone old installation.')
 
@@ -372,7 +375,6 @@ def fix_fstab():
     with open('/target/etc/initramfs-tools/conf.d/resume') as outfile:
         outfile.write('RESUME=none\n')
 
-
 def chroot_cmd(*args, capture=True):
     result = cmd(
         os.path.join(os.path.realpath(__file__), 'arrowroot/arrowroot'),
@@ -380,6 +382,7 @@ def chroot_cmd(*args, capture=True):
     return result
 
 def install_grub(disk, efi_part):
+    heading('Installing GRUB...')
     try:
         cmd('mount', disk_path(disk, efi_part), '/target/boot/efi')
         chroot_cmd('add-apt-repository', 'eniverse')
@@ -409,6 +412,7 @@ def install_grub(disk, efi_part):
 
 
 def expand_root(pool, disk, part):
+    heading('Expanding ZFS root to fill entire disk...')
     try:
         cmd('umount', '/source')
         cmd('sgdisk', '--delete', str(max(partitions(disk))), disk_path(disk))
@@ -441,12 +445,61 @@ def recommended_swap():
         return 1024*8
     return ram//2
 
-# def create_swap(pool, size):
-#     size_str = '{:d}M' if size 
-#     try:
-#         cmd('zfs', 'create', '-V', '')
-#     except CalledProcessError:
-#         fail('could not create swap')
+def create_swap(pool, size):
+    heading('Creating swap of size {:d}M...'.format(size))
+    try:
+        pagesize = cmd('getconf', 'PAGESIZE').stdout
+        cmd('zfs', 'create', '-V', '{:d}M'.format(size), '-b', pagesize,
+            '-o', 'compression=zle', '-o', 'logbias=throughput', 
+            '-o', 'sync=always', '-o', 'primarycache=metadata',
+            '-o', 'secondarycache=none', '-o', 'com.sun:auto-snapshot=false',
+            '{:s}/swap'.format(pool))
+        cmd('mkswap', '-f', '/dev/zvol/{:s}/swap'.format(pool))
+    except CalledProcessError:
+        fail('could not create swap')
+    try:
+        with open('/target/etc/fstab', 'a') as outfile:
+            line = '\n/dev/zvol/{:s}/swap  none  swap  defaults  0  0\n'
+            outfile.write(line.format(pool))
+    except IOError:
+        fail('could not add swap to fstab')
+
+
+def create_swap_wrapper(pool, size, swap_off):
+    if not swap_off:
+        if size == 'auto':
+            create_swap(pool, recommended_swap())
+        else:
+            if size.endswith('M'):
+                create_swap(pool, int(size[:-1]))
+            elif size.endswith('G'):
+                create_swap(pool, int(size[:-1])//1024)
+            else:
+                fail('unknown swap size specification, {:s}'.format(size))
+
+def initial_snapshot(pool, local=False, opt=False):
+    heading('Taking initial snapshot...')
+    try:
+        cmd('zfs', 'snapshot', '-r', '{:s}/ROOT/ubuntu@initial'.format(pool))
+        if local:
+            cmd('zfs', 'snapshot', '-r', '{:s}/local@initial'.format(pool))
+        if opt:
+            cmd('zfs', 'snapshot', '-r', '{:s}/opt@initial'.format(pool))
+    except CalledProcessError:
+        fail('could not make initial snapshot')
+
+def copy_log():
+    heading('Copying migration log to /root/migration.log...')
+    shutil.copyfile('migration.log', '/target/root/migration.log')
+
+def unmount_root(pool):
+    heading('Unmounting filesystems...')
+    try:
+        cmd('umount', '/target/boot/efi')
+        cmd('zpool', 'export', pool)
+        cmd('umount', '/source')
+    except CalledProcessError:
+        fail('could not unmount filesystems')
 
 def main():
     options = parse_args()
@@ -466,28 +519,13 @@ def main():
     fix_fstab()
     install_grub(options.disk, options.efi_part)
     expand_root(options.rpool, options.disk, options.part)
-    if not options.swap_off:
-        if options.swap == 'auto':
-            create_swap(options.rpool, recommended_swap())
-        else:
-            create_swap(options.rpool, options.swap)
-
-def cmd(*args, capture=True):
-    logging.info('Command: [' + ', '.join(args) + ']')
-    if capture:
-        result = subprocess.run(args, check=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout = result.stdout.decode('utf-8').rstrip()
-        stderr = result.stderr.decode('utf-8').rstrip()
-        if stdout:
-            logging.info('STDOUT: ' + stdout)
-        if stderr:
-            logging.info('STDERR: ' + stderr)
-        return CMDOutput(stdout, stderr)
-    subprocess.run(args, check=True)
-
+    create_swap_wrapper(options.rpool, options.swap, options.swap_off)
+    initial_snapshot(options.pool, options.local, options.opt)
+    copy_log() # copy log ot /root/migration.log on new system
+    unmount_root(options.pool)
+    info('Migration complete, you may now reboot into your new ZFS ROOT pool.')
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(message)s', filename='migrate.log', level=logging.DEBUG)
+    logging.basicConfig(format='%(message)s', filename='migration.log', level=logging.DEBUG)
     signal.signal(signal.SIGINT, ctrl_c)
     main()
