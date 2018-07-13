@@ -286,15 +286,15 @@ def zfs_create(pool, filesystem, snapshot=True, **kwargs):
     info('New ZFS dataset {:s}/{:s}'.format(pool, filesystem))
     option_array = []
     if not snapshot:
-        option_array.append(['-o', 'com.sun:auto-snapshot=false'])
+        option_array.extend(['-o', 'com.sun:auto-snapshot=false'])
     for key, value in kwargs.items():
         if isinstance(value, bool):
             if value:
-                option_array.append(['-o', '{:s}=on'.format(key)])
+                option_array.extend(['-o', '{:s}=on'.format(key)])
             else:
-                option_array.append(['-o', '{:s}=off'.format(key)])
+                option_array.extend(['-o', '{:s}=off'.format(key)])
         else:
-            option_array.append(['-o', '{:s}={:s}'.format(key, value)])
+            option_array.extend(['-o', '{:s}={:s}'.format(key, value)])
     cmd('zfs', 'create', *option_array,
         '{:s}/{:s}'.format(pool, filesystem))
 
