@@ -32,6 +32,8 @@ def ctrl_c(signal, frame):
 def fail(message, code=1):
     logging.error('ERROR:' + message)
     print(tc.ERROR + tc.BOLD + message + tc.ENDC, file=sys.stderr)
+    print(tc.ERROR + tc.BOLD + 'See ./migration.log for details.' + tc.ENDC,
+          file=sys.stderr)
     sys.exit(code)
 
 def warn(message):
@@ -405,8 +407,8 @@ def install_grub(disk, efi_part):
         chroot_cmd('apt-get', 'install', '--yes',
                    'zfs-initramfs', 'zfs-auto-snapshot')
         chroot_cmd('apt-get', 'install', '--yes',
-                   '-o', 'Dpkg::Options::="--force-confdef"',
-                   '-o', 'Dpkg::Options::="--force-confnew"',
+                   '-o', 'Dpkg::Options::=--force-confdef',
+                   '-o', 'Dpkg::Options::=--force-confnew',
                    'grub-efi-amd64', )
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
