@@ -129,6 +129,10 @@ def cmd(*args, capture=True, check=True, cwd=None):
         return CMDOutput(stdout, stderr)
     subprocess.run(args, check=check, cwd=cwd)
 
+def verify_root():
+    if os.geteuid() != 0:
+        fail("The 'migrate' script must be run as root.")
+
 def disk_path(disk, part=None):
     if part:
         if disk[-1].isdigit():
@@ -373,7 +377,7 @@ def clone_root_filesystem():
 
 def fix_fstab(pool):
     heading('Fixing fstab...')
-    shutil.copyfile('/target/etc/fstab', '/target/etc/fstab.bak')
+    shutil.copyfile('/target/etc/fstab', '/target/etc/fstab.orig')
     with open('/target/etc/fstab', 'w') as outfile:
         with open('/target/etc/fstab.bak') as infile:
             for line in infile:
@@ -398,20 +402,29 @@ def install_grub(disk, efi_part):
         cmd('mount', disk_path(disk, efi_part), '/target/boot/efi')
         chroot_cmd('add-apt-repository', 'universe')
         chroot_cmd('apt-get', 'update')
-        chroot_cmd('apt-get', 'install', '--yes', 'zfs-initramfs',
-                   'grub-efi-amd64', 'zfs-auto-snapshot', capture=False)
+        chroot_cmd('apt-get', 'install', '--yes',
+                   '-o', 'Dpkg::Options::=--force-confnew',
+                   'grub-efi-amd64')
+        chroot_cmd('apt-get', 'install', '--yes',
+                   'zfs-initramfs', 'zfs-auto-snapshot')
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
         chroot_cmd('update-initramfs', '-c', '-k', 'all')
-        # cmd('sed', '-i', '/GRUB_HIDDEN_TIMEOUT=/s/^/#/g',
-        #     '/target/etc/default/grub')
-        # cmd('sed', '-ri',
-        #     '/GRUB_CMDLINE_LINUX_DEFAULT/s/quiet\\s*|splash\\s*//g',
-        #     '/target/etc/default/grub')
-        # cmd('sed', '-i',
-        #     '/GRUB_TERMINAL=console/s/^#//g',
-        #     '/target/etc/default/grub')
-        # cmd('fix_grub.sh')
+        # Enable full debug output on boot.
+        shutil.copyfile(
+            '/target/etc/default/grub', '/target/etc/default/grub.orig')
+        with open('/target/etc/default/grub', 'w') as outfile:
+            with open('target/etc/default/grub') as infile:
+                for line in infile:
+                    if line.startswith('GRUB_HIDDEN_TIMEOUT='):
+                        outfile.write('#' + line)
+                    elif line.startswith(
+                            'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"'):
+                        outfile.write('GRUB_CMDLINE_LINUX_DEFAULT=""\n')
+                    elif line.startswith('#GRUB_TERMINAL=console'):
+                        outfile.write('GRUB_TERMINAL=console\n')
+                    else:
+                        outfile.write(line)
         chroot_cmd('update-grub')
         chroot_cmd(
             'grub-install', '--target=x86_64-efi',
@@ -512,7 +525,7 @@ def unmount_root(pool):
 
 def main():
     options = parse_args()
-    # print(options)
+    verify_root()
     verify_disk(options.disk, options.part, options.efi_part)
     cleanup_install(options.disk)
     install_dependencies()
