@@ -379,7 +379,7 @@ def fix_fstab(pool):
     heading('Fixing fstab...')
     shutil.copyfile('/target/etc/fstab', '/target/etc/fstab.orig')
     with open('/target/etc/fstab', 'w') as outfile:
-        with open('/target/etc/fstab.bak') as infile:
+        with open('/target/etc/fstab.orig') as infile:
             for line in infile:
                 if (not line.startswith('#') and line.split()[1] != '/' 
                         and line.split()[2] != 'swap'):
