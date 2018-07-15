@@ -113,13 +113,13 @@ def parse_args():
     #     help=('store /srv/uwsgi on a separate ZFS filesystem'))
     return parser.parse_args()
 
-def cmd(*args, capture=True, check=True, cwd=None):
+def cmd(*args, capture=True, check=True, cwd=None, env=None):
     args = [str(arg) for arg in args]
     qouted_args = ['"' + arg + '"' for arg in args]
     logging.info('\nCOMMAND: [' + ', '.join(qouted_args) + ']')
     if capture:
         result = subprocess.run(args,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env)
         stdout = result.stdout.decode('utf-8').rstrip()
         stderr = result.stderr.decode('utf-8').rstrip()
         if stdout:
@@ -129,7 +129,7 @@ def cmd(*args, capture=True, check=True, cwd=None):
         if check:
             result.check_returncode()
         return CMDOutput(stdout, stderr)
-    subprocess.run(args, check=check, cwd=cwd)
+    subprocess.run(args, check=check, cwd=cwd, env=env)
 
 def verify_root():
     if os.geteuid() != 0:
@@ -393,9 +393,11 @@ def fix_fstab(pool):
     with open('/target/etc/initramfs-tools/conf.d/resume', 'w') as outfile:
         outfile.write('RESUME=none\n')
 
-def chroot_cmd(*args, capture=True):
-    cwd = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'arrowroot')
-    result = cmd('./arrowroot', '/target', *args, capture=capture, cwd=cwd)
+def chroot_cmd(*args, capture=True, env=None):
+    cwd = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                       'arrowroot')
+    result = cmd('./arrowroot', '/target', *args,
+                 capture=capture, cwd=cwd, env=None)
     return result
 
 def install_grub(disk, efi_part):
@@ -406,8 +408,10 @@ def install_grub(disk, efi_part):
         chroot_cmd('apt-get', 'update')
         chroot_cmd('apt-get', 'install', '--yes',
                    'zfs-initramfs', 'zfs-auto-snapshot')
-        chroot_cmd('DEBIAN_FRONTEND=noninteractive', 'apt-get',
-                   'install', '--yes', 'grub-efi-amd64')
+        env = os.environ.copy()
+        env['DEBIAN_FRONTEND'] = 'noninteractive'
+        chroot_cmd('apt-get', 'install', '--yes', 'grub-efi-amd64',
+                   env=env, capture=False)
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
         chroot_cmd('update-initramfs', '-c', '-k', 'all')
