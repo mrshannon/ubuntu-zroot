@@ -403,10 +403,11 @@ def install_grub(disk, efi_part):
         chroot_cmd('add-apt-repository', 'universe')
         chroot_cmd('apt-get', 'update')
         chroot_cmd('apt-get', 'install', '--yes',
-                   '-o', 'Dpkg::Options::=--force-confnew',
-                   'grub-efi-amd64')
-        chroot_cmd('apt-get', 'install', '--yes',
                    'zfs-initramfs', 'zfs-auto-snapshot')
+        chroot_cmd('apt-get', 'install', '--yes',
+                   '-o', 'Dpkg::Options::="--force-confdef"',
+                   '-o', 'Dpkg::Options::="--force-confnew"',
+                   'grub-efi-amd64', )
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
         chroot_cmd('update-initramfs', '-c', '-k', 'all')
