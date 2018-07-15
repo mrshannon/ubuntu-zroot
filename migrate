@@ -410,7 +410,10 @@ def install_grub(disk, efi_part):
                    'zfs-initramfs', 'zfs-auto-snapshot')
         env = os.environ.copy()
         env['DEBIAN_FRONTEND'] = 'noninteractive'
-        chroot_cmd('apt-get', 'install', '--yes', 'grub-efi-amd64',
+        chroot_cmd('apt-get',
+                   '-o', 'Dpkg::Options::="--force-confdef"',
+                   '-o', 'Dpkg::Options::="--force-confnew"',
+                   'install', '--yes', 'grub-efi-amd64',
                    env=env, capture=False)
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
