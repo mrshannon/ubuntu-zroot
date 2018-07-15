@@ -406,10 +406,10 @@ def install_grub(disk, efi_part):
         chroot_cmd('apt-get', 'update')
         chroot_cmd('apt-get', 'install', '--yes',
                    'zfs-initramfs', 'zfs-auto-snapshot')
-        chroot_cmd('apt-get', 'install', '--yes',
+        chroot_cmd('apt-get',
                    '-o', 'Dpkg::Options::=--force-confdef',
                    '-o', 'Dpkg::Options::=--force-confnew',
-                   'grub-efi-amd64', )
+                   'install', '--yes', 'grub-efi-amd64', )
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
         chroot_cmd('update-initramfs', '-c', '-k', 'all')
@@ -417,7 +417,7 @@ def install_grub(disk, efi_part):
         shutil.copyfile(
             '/target/etc/default/grub', '/target/etc/default/grub.orig')
         with open('/target/etc/default/grub', 'w') as outfile:
-            with open('target/etc/default/grub') as infile:
+            with open('/target/etc/default/grub') as infile:
                 for line in infile:
                     if line.startswith('GRUB_HIDDEN_TIMEOUT='):
                         outfile.write('#' + line)
