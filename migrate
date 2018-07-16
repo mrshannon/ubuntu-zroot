@@ -90,27 +90,9 @@ def parse_args():
     parser.add_argument(
         '--postgres', action='store_true',
         help=('store /var/lib/postgres on a separate ZFS filesystem'))
-    # parser.add_argument(
-    #     '--mongodb', action='store_true',
-    #     help=('store /var/lib/postgre on a separate ZFS filesystem'))
-    # parser.add_argument(
-    #     '--redis', action='store_true',
-    #     help=('store /var/lib/redis on a separate ZFS filesystem'))
-    # parser.add_argument(
-    #     '--nfs', action='store_true',
-    #     help=('store /var/lib/nfs on a separate ZFS filesystem'))
-    # parser.add_argument(
-    #     '--libvirt', action='store_true',
-    #     help=('store /var/lib/libvirt on a separate ZFS filesystem'))
     parser.add_argument(
         '--mail', action='store_true',
         help=('store /var/mail on a separate ZFS filesystem'))
-    # parser.add_argument(
-    #     '--http', action='store_true',
-    #     help=('store /srv/http on a separate ZFS filesystem'))
-    # parser.add_argument(
-    #     '--uwsgi', action='store_true',
-    #     help=('store /srv/uwsgi on a separate ZFS filesystem'))
     return parser.parse_args()
 
 def cmd(*args, capture=True, check=True, cwd=None, env=None):
@@ -408,10 +390,8 @@ def install_grub(disk, efi_part):
         chroot_cmd('apt-get', 'update')
         chroot_cmd('apt-get', 'install', '--yes',
                    'zfs-initramfs', 'zfs-auto-snapshot')
-        env = os.environ.copy()
-        env['DEBIAN_FRONTEND'] = 'noninteractive'
-        chroot_cmd('apt-get', 'install', '-yq', 'grub-efi-amd64',
-                   env=env, capture=False)
+        chroot_cmd('apt-get', 'install', '--yes', 'grub-efi-amd64',
+                   capture=False)
         if 'zfs' not in chroot_cmd('grub-probe', '/').stdout:
             fail('GRUB does not support ZFS booting, migration failed')
         chroot_cmd('update-initramfs', '-c', '-k', 'all')
