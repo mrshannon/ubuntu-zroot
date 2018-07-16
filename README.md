@@ -11,8 +11,8 @@ The migration script has been tested on the following distributions:
 *If you have succefully tested the migration script on a Ubuntu based
 distribution please make a pull request to update this list.*
 
-The installation to migrate must be a UEFI install with the ESP at /root/efi/ESP
-with a single main / partition with the ext4 fileystem.
+The installation to migrate must be a UEFI install with the ESP at
+/root/efi/ESP with a single main / partition with the ext4 fileystem.
 
 
 Downloading the Script
