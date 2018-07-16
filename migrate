@@ -401,7 +401,6 @@ def install_grub(disk, efi_part):
         with open('/target/etc/default/grub', 'w') as outfile:
             with open('/target/etc/default/grub.orig') as infile:
                 for line in infile:
-                    print(line)
                     if line.startswith('GRUB_HIDDEN_TIMEOUT='):
                         outfile.write('#' + line)
                     elif line.startswith(
