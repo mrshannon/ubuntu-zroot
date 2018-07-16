@@ -32,7 +32,8 @@ From a live CD/USB run the migration script:
 ```
 $ ./migrate sdX
 ```
-where `X` is replaced by the drive letter.
+where `X` is replaced by the drive letter of the drive where the installation
+to migrate is located.
 
 To get help with additional options use:
 
