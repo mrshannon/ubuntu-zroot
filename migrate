@@ -89,7 +89,7 @@ def parse_args():
         help=('store /var/lib/mysql on a separate ZFS filesystem'))
     parser.add_argument(
         '--postgres', action='store_true',
-        help=('store /var/lib/postgres on a separate ZFS filesystem'))
+        help=('store /var/lib/postgresql on a separate ZFS filesystem'))
     parser.add_argument(
         '--mail', action='store_true',
         help=('store /var/mail on a separate ZFS filesystem'))
@@ -229,6 +229,9 @@ def move_root(disk, part):
             'if={:s}'.format(disk_path(disk, part)),
             'of={:s}'.format(disk_path(disk, new_part)))
         cmd('partprobe', disk_path(disk))
+        time.sleep(2)
+        cmd('partprobe', disk_path(disk))
+        time.sleep(2)
         # will fail first time due to checksums, should pass the second time
         cmd('e2fsck', '-f', disk_path(disk, new_part),
             capture=False, check=False)
@@ -326,8 +329,8 @@ def create_filesystems(
             info('Creating /var/lib/mysql')
             zfs_create(pool, 'var/mysql', mountpoint='/var/lib/mysql')
         if postgres:
-            info('Creating /var/lib/postgres')
-            zfs_create(pool, 'var/postgres', mountpoint='/var/lib/postgres')
+            info('Creating /var/lib/postgresql')
+            zfs_create(pool, 'var/postgresql', mountpoint='/var/lib/postgresql')
         if mail:
             info('Creating /var/mail')
             zfs_create(pool, 'var/mail')
