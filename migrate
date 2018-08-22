@@ -237,12 +237,16 @@ def move_root(disk, part):
             capture=False, check=False)
         cmd('e2fsck', '-f', disk_path(disk, new_part), capture=False)
         cmd('sgdisk', '--delete', part, disk_path(disk))
+        cmd('partprobe', disk_path(disk))
+        time.sleep(2)
     except CalledProcessError:
         fail('Could not move old root partition to end of drive.')
 
 def mount_source_filesystem(disk):
     heading('Mounting source filesystem at /source...')
     try:
+        cmd('partprobe', disk_path(disk))
+        time.sleep(5)
         cmd('mkdir', '-p', '/source')
         cmd('mount', disk_path(disk, max(partitions(disk))), '/source')
     except CalledProcessError:
